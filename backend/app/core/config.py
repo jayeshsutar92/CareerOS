@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
     debug: bool = Field(default=False, validation_alias="APP_DEBUG")
+    database_url: str = Field(
+        default="postgresql+asyncpg://postgres:password@localhost:5432/careeros",
+        validation_alias="DATABASE_URL",
+    )
+    sql_echo: bool = Field(default=False, validation_alias="SQL_ECHO")
 
     @property
     def is_production(self) -> bool:

@@ -25,6 +25,7 @@ RUN addgroup --system app \
 COPY --from=builder --chown=app:app /app/.venv ./.venv
 COPY --from=builder --chown=app:app /app/app ./app
 COPY --from=builder --chown=app:app /app/alembic ./alembic
+COPY --from=builder --chown=app:app /app/alembic.ini ./alembic.ini
 COPY --from=builder --chown=app:app /app/pyproject.toml ./pyproject.toml
 
 USER app
