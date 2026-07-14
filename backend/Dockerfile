@@ -15,6 +15,8 @@ FROM python:3.13-slim AS runtime
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    APP_ENV=production \
+    LOG_LEVEL=INFO \
     PATH="/app/.venv/bin:$PATH"
 
 RUN addgroup --system app \
