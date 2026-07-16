@@ -24,6 +24,19 @@ class Settings(BaseSettings):
         validation_alias="DATABASE_URL",
     )
     sql_echo: bool = Field(default=False, validation_alias="SQL_ECHO")
+    jwt_secret_key: str = Field(
+        default="change-me-in-production",
+        validation_alias="JWT_SECRET_KEY",
+    )
+    jwt_algorithm: str = Field(default="HS256", validation_alias="JWT_ALGORITHM")
+    access_token_expire_minutes: int = Field(
+        default=15,
+        validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES",
+    )
+    refresh_token_expire_days: int = Field(
+        default=7,
+        validation_alias="REFRESH_TOKEN_EXPIRE_DAYS",
+    )
 
     @property
     def is_production(self) -> bool:
