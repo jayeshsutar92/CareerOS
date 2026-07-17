@@ -9,6 +9,7 @@ from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
+from app.core.redis import close_redis_client, ping_redis
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
     logger.info("Application startup", extra={"environment": settings.app_env})
+    try:
+        await ping_redis()
+        logger.info("Redis connection established")
+    except Exception:
+        logger.exception("Redis connection failed")
     yield
+    await close_redis_client()
     logger.info("Application shutdown")
 
 

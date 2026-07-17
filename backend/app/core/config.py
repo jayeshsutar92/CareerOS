@@ -24,6 +24,19 @@ class Settings(BaseSettings):
         validation_alias="DATABASE_URL",
     )
     sql_echo: bool = Field(default=False, validation_alias="SQL_ECHO")
+    redis_url: str = Field(default="redis://localhost:6379/0", validation_alias="REDIS_URL")
+    redis_key_prefix: str = Field(default="careeros", validation_alias="REDIS_KEY_PREFIX")
+    cache_default_ttl_seconds: int = Field(
+        default=300,
+        validation_alias="CACHE_DEFAULT_TTL_SECONDS",
+    )
+    session_ttl_seconds: int = Field(default=604800, validation_alias="SESSION_TTL_SECONDS")
+    rate_limit_enabled: bool = Field(default=True, validation_alias="RATE_LIMIT_ENABLED")
+    rate_limit_requests: int = Field(default=120, validation_alias="RATE_LIMIT_REQUESTS")
+    rate_limit_window_seconds: int = Field(
+        default=60,
+        validation_alias="RATE_LIMIT_WINDOW_SECONDS",
+    )
     jwt_secret_key: str = Field(
         default="change-me-in-production",
         validation_alias="JWT_SECRET_KEY",
