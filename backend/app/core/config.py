@@ -68,6 +68,24 @@ class Settings(BaseSettings):
         default=5.0,
         validation_alias="WORKER_SCHEDULED_POLL_INTERVAL_SECONDS",
     )
+    openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
+    anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
+    gemini_api_key: str = Field(default="", validation_alias="GEMINI_API_KEY")
+    ai_provider: str = Field(default="openai", validation_alias="AI_PROVIDER")
+    ai_model: str = Field(default="gpt-4.1-mini", validation_alias="AI_MODEL")
+    ai_timeout_seconds: float = Field(default=30.0, validation_alias="AI_TIMEOUT_SECONDS")
+    ai_max_retries: int = Field(default=2, validation_alias="AI_MAX_RETRIES")
+    ai_temperature: float = Field(default=0.2, validation_alias="AI_TEMPERATURE")
+    ai_max_output_tokens: int | None = Field(default=None, validation_alias="AI_MAX_OUTPUT_TOKENS")
+    ai_log_prompts: bool = Field(default=False, validation_alias="AI_LOG_PROMPTS")
+    ai_input_token_cost_per_1m: float = Field(
+        default=0.0,
+        validation_alias="AI_INPUT_TOKEN_COST_PER_1M",
+    )
+    ai_output_token_cost_per_1m: float = Field(
+        default=0.0,
+        validation_alias="AI_OUTPUT_TOKEN_COST_PER_1M",
+    )
 
     @property
     def is_production(self) -> bool:

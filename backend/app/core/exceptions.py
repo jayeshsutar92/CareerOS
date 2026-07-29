@@ -6,6 +6,8 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.ai.exceptions import AIConfigurationError, AIError
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,6 +51,25 @@ def register_exception_handlers(app: FastAPI) -> None:
             code="validation_error",
             message="Request validation failed",
             details=exc.errors(),
+        )
+
+    @app.exception_handler(AIConfigurationError)
+    async def ai_configuration_exception_handler(
+        _request: Request,
+        exc: AIConfigurationError,
+    ) -> JSONResponse:
+        return error_response(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="ai_configuration_error",
+            message=str(exc),
+        )
+
+    @app.exception_handler(AIError)
+    async def ai_exception_handler(_request: Request, exc: AIError) -> JSONResponse:
+        return error_response(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            code="ai_provider_error",
+            message=str(exc) or "AI provider request failed",
         )
 
     @app.exception_handler(Exception)
