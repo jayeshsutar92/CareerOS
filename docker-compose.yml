@@ -33,11 +33,42 @@ services:
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
       RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-120}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
+      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-default}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-1}
+      WORKER_MAX_RETRIES: ${WORKER_MAX_RETRIES:-3}
+      WORKER_RETRY_DELAY_SECONDS: ${WORKER_RETRY_DELAY_SECONDS:-30}
+      WORKER_RESULT_TTL_SECONDS: ${WORKER_RESULT_TTL_SECONDS:-86400}
+      WORKER_SCHEDULED_POLL_INTERVAL_SECONDS: ${WORKER_SCHEDULED_POLL_INTERVAL_SECONDS:-5}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - careeros
+
+  worker:
+    build:
+      context: ./backend
+      target: runtime
+    command: python -m app.workers.entrypoint
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/careeros
+      REDIS_URL: redis://redis:6379
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-careeros}
+      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-default}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-1}
+      WORKER_MAX_RETRIES: ${WORKER_MAX_RETRIES:-3}
+      WORKER_RETRY_DELAY_SECONDS: ${WORKER_RETRY_DELAY_SECONDS:-30}
+      WORKER_RESULT_TTL_SECONDS: ${WORKER_RESULT_TTL_SECONDS:-86400}
+      WORKER_SCHEDULED_POLL_INTERVAL_SECONDS: ${WORKER_SCHEDULED_POLL_INTERVAL_SECONDS:-5}
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,11 +119,46 @@ services:
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
       RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-120}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
+      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-default}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-1}
+      WORKER_MAX_RETRIES: ${WORKER_MAX_RETRIES:-3}
+      WORKER_RETRY_DELAY_SECONDS: ${WORKER_RETRY_DELAY_SECONDS:-30}
+      WORKER_RESULT_TTL_SECONDS: ${WORKER_RESULT_TTL_SECONDS:-86400}
+      WORKER_SCHEDULED_POLL_INTERVAL_SECONDS: ${WORKER_SCHEDULED_POLL_INTERVAL_SECONDS:-5}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/.venv
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - careeros
+
+  worker-dev:
+    profiles: ["dev"]
+    build:
+      context: ./backend
+      target: builder
+    command: uv run python -m app.workers.entrypoint
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: DEBUG
+      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/careeros
+      REDIS_URL: redis://redis:6379
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-careeros}
+      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-default}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-1}
+      WORKER_MAX_RETRIES: ${WORKER_MAX_RETRIES:-3}
+      WORKER_RETRY_DELAY_SECONDS: ${WORKER_RETRY_DELAY_SECONDS:-30}
+      WORKER_RESULT_TTL_SECONDS: ${WORKER_RESULT_TTL_SECONDS:-86400}
+      WORKER_SCHEDULED_POLL_INTERVAL_SECONDS: ${WORKER_SCHEDULED_POLL_INTERVAL_SECONDS:-5}
     volumes:
       - ./backend:/app
       - backend_venv:/app/.venv

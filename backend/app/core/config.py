@@ -50,6 +50,24 @@ class Settings(BaseSettings):
         default=7,
         validation_alias="REFRESH_TOKEN_EXPIRE_DAYS",
     )
+    worker_queue_name: str = Field(default="default", validation_alias="WORKER_QUEUE_NAME")
+    worker_poll_interval_seconds: float = Field(
+        default=1.0,
+        validation_alias="WORKER_POLL_INTERVAL_SECONDS",
+    )
+    worker_max_retries: int = Field(default=3, validation_alias="WORKER_MAX_RETRIES")
+    worker_retry_delay_seconds: int = Field(
+        default=30,
+        validation_alias="WORKER_RETRY_DELAY_SECONDS",
+    )
+    worker_result_ttl_seconds: int = Field(
+        default=86400,
+        validation_alias="WORKER_RESULT_TTL_SECONDS",
+    )
+    worker_scheduled_poll_interval_seconds: float = Field(
+        default=5.0,
+        validation_alias="WORKER_SCHEDULED_POLL_INTERVAL_SECONDS",
+    )
 
     @property
     def is_production(self) -> bool:
