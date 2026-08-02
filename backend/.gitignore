@@ -22,3 +22,5 @@ wheels/
 .venv
 .venv*/
 venv/
+
+templates.txt
