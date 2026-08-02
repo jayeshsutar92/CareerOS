@@ -28,6 +28,10 @@ class JsonFormatter(logging.Formatter):
             "ai_completion_tokens",
             "ai_total_tokens",
             "ai_total_cost",
+            "agent_name",
+            "agent_run_id",
+            "agent_status",
+            "agent_attempt",
         ):
             value = getattr(record, key, None)
             if value is not None:

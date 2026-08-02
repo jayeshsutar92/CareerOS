@@ -6,6 +6,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.agents.exceptions import AgentError, AgentValidationError
 from app.ai.exceptions import AIConfigurationError, AIError
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,25 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_502_BAD_GATEWAY,
             code="ai_provider_error",
             message=str(exc) or "AI provider request failed",
+        )
+
+    @app.exception_handler(AgentValidationError)
+    async def agent_validation_exception_handler(
+        _request: Request,
+        exc: AgentValidationError,
+    ) -> JSONResponse:
+        return error_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="agent_validation_error",
+            message=str(exc),
+        )
+
+    @app.exception_handler(AgentError)
+    async def agent_exception_handler(_request: Request, exc: AgentError) -> JSONResponse:
+        return error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="agent_error",
+            message=str(exc) or "Agent execution failed",
         )
 
     @app.exception_handler(Exception)

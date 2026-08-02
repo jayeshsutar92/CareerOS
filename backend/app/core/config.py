@@ -86,6 +86,15 @@ class Settings(BaseSettings):
         default=0.0,
         validation_alias="AI_OUTPUT_TOKEN_COST_PER_1M",
     )
+    agent_max_retries: int = Field(default=2, validation_alias="AGENT_MAX_RETRIES")
+    agent_retry_delay_seconds: float = Field(
+        default=1.0,
+        validation_alias="AGENT_RETRY_DELAY_SECONDS",
+    )
+    agent_worker_task_name: str = Field(
+        default="agent_execution",
+        validation_alias="AGENT_WORKER_TASK_NAME",
+    )
 
     @property
     def is_production(self) -> bool:
