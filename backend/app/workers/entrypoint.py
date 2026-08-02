@@ -4,6 +4,7 @@ import asyncio
 import logging
 import signal
 
+from app.agents.bootstrap import register_agents
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.redis import close_redis_client, ping_redis
@@ -17,6 +18,7 @@ async def main() -> None:
     settings = get_settings()
     configure_logging(settings.log_level)
     register_tasks()
+    register_agents()
 
     await ping_redis()
     runner = WorkerRunner(queue_name=settings.worker_queue_name)

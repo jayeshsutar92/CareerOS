@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 
+from app.agents.bootstrap import register_agents
 from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
+    register_agents()
     logger.info("Application startup", extra={"environment": settings.app_env})
     try:
         await ping_redis()

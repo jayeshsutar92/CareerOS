@@ -1,6 +1,7 @@
 from app.models.agent_log import AgentLog
 from app.models.application import Application
 from app.models.company import Company
+from app.models.contact import Contact
 from app.models.email import Email
 from app.models.job import Job
 from app.models.portfolio import Portfolio
@@ -12,6 +13,7 @@ __all__ = [
     "AgentLog",
     "Application",
     "Company",
+    "Contact",
     "Email",
     "Job",
     "Portfolio",
