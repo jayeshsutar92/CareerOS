@@ -2,6 +2,7 @@ from app.db.base_class import Base
 from app.models.agent_log import AgentLog
 from app.models.application import Application
 from app.models.company import Company
+from app.models.company_intelligence import CompanyIntelligence
 from app.models.contact import Contact
 from app.models.email import Email
 from app.models.job import Job
@@ -15,6 +16,7 @@ __all__ = [
     "Application",
     "Base",
     "Company",
+    "CompanyIntelligence",
     "Contact",
     "Email",
     "Job",
@@ -23,3 +25,4 @@ __all__ = [
     "Resume",
     "User",
 ]
+
