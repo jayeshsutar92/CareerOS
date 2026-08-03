@@ -55,3 +55,17 @@ class EmailRepository:
         stmt = stmt.order_by(Email.created_at.desc()).offset(offset).limit(page_size)
         result = await self.session.execute(stmt)
         return list(result.scalars().all()), total
+
+    async def update_email(self, email: Email, **kwargs) -> Email:
+        for key, value in kwargs.items():
+            if hasattr(email, key):
+                setattr(email, key, value)
+        self.session.add(email)
+        await self.session.commit()
+        await self.session.refresh(email)
+        return email
+
+    async def list_by_status(self, user_id: UUID, status: str) -> list[Email]:
+        stmt = select(Email).where(Email.user_id == user_id, Email.status == status).order_by(Email.created_at.asc())
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

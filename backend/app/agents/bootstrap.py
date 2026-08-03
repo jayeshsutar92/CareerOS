@@ -13,6 +13,8 @@ def register_agents() -> None:
     register_contact_discovery_agent()
     register_company_intelligence_agent()
     register_email_personalization_agent()
+    from app.email_delivery.agent import register_email_delivery_agent
+    register_email_delivery_agent()
     _AGENTS_REGISTERED = True
 
 

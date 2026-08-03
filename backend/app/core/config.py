@@ -95,6 +95,14 @@ class Settings(BaseSettings):
         default="agent_execution",
         validation_alias="AGENT_WORKER_TASK_NAME",
     )
+    email_daily_limit_per_user: int = Field(
+        default=50,
+        validation_alias="EMAIL_DAILY_LIMIT_PER_USER",
+    )
+    email_cooldown_seconds: int = Field(
+        default=60,
+        validation_alias="EMAIL_COOLDOWN_SECONDS",
+    )
 
     @property
     def is_production(self) -> bool:

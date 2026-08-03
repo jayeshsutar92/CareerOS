@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from app.models.recruiter import Recruiter
     from app.models.user import User
 
+import enum
 import uuid
 from datetime import datetime
 
@@ -16,6 +17,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base_class import Base
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
+
+
+class EmailStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SCHEDULED = "scheduled"
+    SENDING = "sending"
+    SENT = "sent"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class Email(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -42,10 +52,14 @@ class Email(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     subject: Mapped[str] = mapped_column(String(500), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="draft", server_default="draft"
+    status: Mapped[EmailStatus] = mapped_column(
+        String(50), nullable=False, default=EmailStatus.DRAFT, server_default=EmailStatus.DRAFT.value
     )
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="emails")
     recruiter: Mapped[Recruiter | None] = relationship(back_populates="emails")
