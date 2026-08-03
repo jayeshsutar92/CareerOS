@@ -91,6 +91,27 @@ class EmailPersonalizationService:
                     key_insights=[intel.raw_summary] if intel.raw_summary else [],
                 )
 
+        # Auto-resolve Recipient Context from Contact DB if ID provided
+        if payload_copy.contact_id and not payload_copy.recipient:
+            from app.models.contact import Contact
+            contact_res = await self.session.execute(
+                select(Contact).where(Contact.id == payload_copy.contact_id)
+            )
+            contact = contact_res.scalar_one_or_none()
+            if contact:
+                from app.schemas.email_personalization import RecipientContext
+                # Use the first available email if any
+                contact_email = None
+                for method in contact.contact_methods:
+                    if method.get("type") == "email":
+                        contact_email = method.get("value")
+                        break
+                payload_copy.recipient = RecipientContext(
+                    name=contact.name,
+                    role=contact.role,
+                    email=contact_email,
+                )
+
         # Auto-resolve User Profile & Portfolios from DB if user_id provided
         if payload_copy.user_id:
             if not payload_copy.user_profile:

@@ -46,6 +46,7 @@ class EmailPersonalizationRequest(BaseModel):
     company_intelligence: CompanyContext | None = None
     company_intelligence_id: UUID | None = None
     recipient: RecipientContext | None = None
+    contact_id: UUID | None = Field(default=None, description="Optional contact ID to auto-resolve recipient details")
     custom_instructions: str | None = Field(default=None, max_length=1000)
     user_id: UUID | None = None
     save_draft: bool = True
