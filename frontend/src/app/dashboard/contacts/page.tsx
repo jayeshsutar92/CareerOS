@@ -2,7 +2,8 @@
 
 import { Users } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
-import { EmptyState } from "@/components/dashboard/empty-state";
+import { ContactDiscoveryForm } from "@/components/dashboard/contacts/contact-discovery-form";
+import { ContactsTable } from "@/components/dashboard/contacts/contacts-table";
 
 export default function ContactsPage() {
   return (
@@ -17,11 +18,14 @@ export default function ContactsPage() {
         ]}
       />
 
-      <EmptyState
-        icon={Users}
-        title="No contacts yet"
-        description="Start discovering hiring contacts by running a contact search for your target companies."
-      />
+      <div className="grid gap-8 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <ContactDiscoveryForm />
+        </div>
+        <div className="lg:col-span-2">
+          <ContactsTable />
+        </div>
+      </div>
     </div>
   );
 }

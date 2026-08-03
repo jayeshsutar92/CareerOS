@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 
 export function TopBar() {
   const { user, logout } = useAuth();
-  const { isCollapsed, openMobile } = useSidebarStore();
+  const { openMobile } = useSidebarStore();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 

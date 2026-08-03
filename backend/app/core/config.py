@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     project_name: str = "CareerOS API"
     app_env: Environment = Field(default="development", validation_alias="APP_ENV")
     api_v1_prefix: str = "/api/v1"
+    cors_origins: list[str] = Field(default=["http://localhost:3000"], validation_alias="CORS_ORIGINS")
     log_level: str = "INFO"
     debug: bool = Field(default=False, validation_alias="APP_DEBUG")
     database_url: str = Field(
