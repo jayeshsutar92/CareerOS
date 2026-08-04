@@ -5,7 +5,6 @@ import { format } from "date-fns";
 import { 
   Building2, 
   Mail, 
-  Linkedin, 
   Phone, 
   Globe, 
   Link as LinkIcon, 
@@ -47,7 +46,7 @@ import {
 const getMethodIcon = (type: string) => {
   switch (type) {
     case "email": return <Mail className="h-4 w-4" />;
-    case "linkedin": return <Linkedin className="h-4 w-4" />;
+    case "linkedin": return <LinkIcon className="h-4 w-4" />;
     case "phone": return <Phone className="h-4 w-4" />;
     case "website": return <Globe className="h-4 w-4" />;
     case "source_page": return <LinkIcon className="h-4 w-4" />;
