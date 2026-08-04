@@ -16,10 +16,13 @@ import {
   ChevronRight,
   Eye
 } from "lucide-react";
+import { toast } from "sonner";
 import { useContacts } from "@/hooks/use-contacts";
 import { ContactRead, ContactRoleCategory } from "@/types/contact";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/dashboard/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -146,15 +149,24 @@ export function ContactsTable() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow className="border-zinc-800 hover:bg-zinc-900/50">
-                <TableCell colSpan={6} className="h-32 text-center">
-                  <Loader2 className="mx-auto h-6 w-6 animate-spin text-zinc-500" />
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i} className="border-zinc-800">
+                  <TableCell><Skeleton className="h-8 w-32" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
+                </TableRow>
+              ))
             ) : isError ? (
               <TableRow className="border-zinc-800 hover:bg-zinc-900/50">
-                <TableCell colSpan={6} className="h-32 text-center text-red-400">
-                  Failed to load contacts. Please try again.
+                <TableCell colSpan={6} className="h-48 text-center p-0">
+                  <ErrorState 
+                    title="Failed to load contacts"
+                    description="There was an error communicating with the server. Please try again."
+                    className="border-0 rounded-none bg-transparent m-0 py-8"
+                  />
                 </TableCell>
               </TableRow>
             ) : !data || data.items.length === 0 ? (
@@ -267,15 +279,30 @@ export function ContactsTable() {
                       <div className="text-zinc-400">{getMethodIcon(method.type)}</div>
                       <div className="flex-1 overflow-hidden">
                         <p className="text-xs text-zinc-500 uppercase tracking-wider mb-0.5">{method.type}</p>
-                        <a 
-                          href={method.type === 'email' ? `mailto:${method.value}` : method.value.startsWith('http') ? method.value : '#'}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-sm text-zinc-200 hover:text-white hover:underline truncate block"
-                        >
-                          {method.value}
-                        </a>
+                        <div className="flex items-center gap-2">
+                          <a 
+                            href={method.type === 'email' ? `mailto:${method.value}` : method.value.startsWith('http') ? method.value : '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm text-zinc-200 hover:text-white hover:underline truncate block"
+                          >
+                            {method.value}
+                          </a>
+                        </div>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-zinc-400 hover:text-white"
+                        onClick={() => {
+                          if (navigator.clipboard) {
+                            navigator.clipboard.writeText(method.value);
+                            toast.success("Copied to clipboard");
+                          }
+                        }}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                      </Button>
                     </div>
                   ))}
                 </div>

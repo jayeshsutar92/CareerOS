@@ -7,6 +7,9 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/dashboard/error-state";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 interface CompanyDetailsProps {
   id: string | null;
@@ -18,30 +21,47 @@ export function CompanyDetails({ id }: CompanyDetailsProps) {
 
   if (!id) {
     return (
-      <div className="flex flex-col items-center justify-center h-[600px] border border-zinc-800 rounded-md bg-zinc-900/50 text-zinc-500 p-6 text-center">
-        <Building2 className="h-12 w-12 mb-4 opacity-20" />
-        <h3 className="text-lg font-medium text-white mb-2">No Company Selected</h3>
-        <p className="text-sm max-w-sm">
-          Select a company from the list or run a new analysis to view intelligence data, tech stack, and summaries.
-        </p>
+      <div className="flex items-center justify-center h-[600px] border border-zinc-800 rounded-md bg-zinc-900/50">
+        <EmptyState 
+          icon={Building2}
+          title="No Company Selected"
+          description="Select a company from the list or run a new analysis to view intelligence data, tech stack, and summaries."
+        />
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-[600px] border border-zinc-800 rounded-md bg-zinc-900/50 text-zinc-500">
-        <Loader2 className="h-8 w-8 animate-spin mb-4" />
-        <p>Loading company data...</p>
+      <div className="flex flex-col h-[600px] border border-zinc-800 rounded-md bg-zinc-900/50 p-6 space-y-6">
+        <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+          <div>
+            <Skeleton className="h-8 w-64 mb-2" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <Skeleton className="h-9 w-32" />
+        </div>
+        <div className="space-y-4 pt-4">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-6 w-40 mt-6" />
+          <div className="flex gap-2">
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-6 w-20" />
+            <Skeleton className="h-6 w-32" />
+          </div>
+        </div>
       </div>
     );
   }
 
   if (isError || !data) {
     return (
-      <div className="flex flex-col items-center justify-center h-[600px] border border-zinc-800 rounded-md bg-zinc-900/50 text-red-400">
-        <AlertTriangle className="h-8 w-8 mb-4" />
-        <p>Failed to load company details.</p>
+      <div className="flex items-center justify-center h-[600px] border border-zinc-800 rounded-md bg-zinc-900/50 p-6">
+        <ErrorState 
+          title="Failed to load company details"
+          description="We couldn't retrieve the company's intelligence data. Please try again."
+        />
       </div>
     );
   }

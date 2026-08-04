@@ -25,6 +25,9 @@ import { useScheduledEmails, useCancelEmail, useScheduleEmail } from "@/hooks/us
 import { EmailDeliveryStatusRead } from "@/types/scheduler";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { ErrorState } from "@/components/dashboard/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export function ScheduledEmailsTable() {
   const { data, isLoading, isError, refetch } = useScheduledEmails();
@@ -36,23 +39,37 @@ export function ScheduledEmailsTable() {
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
-  const handleCancel = async (id: string) => {
-    if (!confirm("Are you sure you want to cancel this scheduled email?")) return;
-    try {
-      await cancelEmail.mutateAsync(id);
-      toast.success("Email cancelled successfully");
-    } catch (error: any) {
-      toast.error(error?.response?.data?.detail || "Failed to cancel email");
-    }
+  const [confirmState, setConfirmState] = useState<{ open: boolean; type: "cancel" | "retry" | null; id: string | null }>({
+    open: false,
+    type: null,
+    id: null,
+  });
+
+  const handleCancelClick = (id: string) => {
+    setConfirmState({ open: true, type: "cancel", id });
   };
 
-  const handleRetry = async (id: string) => {
-    if (!confirm("Are you sure you want to retry sending this email?")) return;
-    try {
-      await scheduleEmail.mutateAsync({ emailId: id, request: { scheduled_at: null } });
-      toast.success("Email queued for sending");
-    } catch (error: any) {
-      toast.error(error?.response?.data?.detail || "Failed to retry email");
+  const handleRetryClick = (id: string) => {
+    setConfirmState({ open: true, type: "retry", id });
+  };
+
+  const executeConfirmAction = async () => {
+    if (!confirmState.id) return;
+    
+    if (confirmState.type === "cancel") {
+      try {
+        await cancelEmail.mutateAsync(confirmState.id);
+        toast.success("Email cancelled successfully");
+      } catch (error: any) {
+        toast.error(error?.response?.data?.detail || "Failed to cancel email");
+      }
+    } else if (confirmState.type === "retry") {
+      try {
+        await scheduleEmail.mutateAsync({ emailId: confirmState.id, request: { scheduled_at: null } });
+        toast.success("Email queued for sending");
+      } catch (error: any) {
+        toast.error(error?.response?.data?.detail || "Failed to retry email");
+      }
     }
   };
 
@@ -73,11 +90,33 @@ export function ScheduledEmailsTable() {
   const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
 
   if (isLoading) {
-    return <div className="p-8 text-center text-zinc-400">Loading emails...</div>;
+    return (
+      <div className="space-y-4">
+        <div className="flex gap-4">
+          <Skeleton className="h-10 w-full max-w-sm" />
+          <Skeleton className="h-10 w-[180px]" />
+          <Skeleton className="h-10 w-[100px] ml-auto" />
+        </div>
+        <div className="rounded-md border border-white/10 p-4">
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (isError || !data) {
-    return <div className="p-8 text-center text-red-400">Failed to load emails.</div>;
+    return (
+      <div className="p-8">
+        <ErrorState 
+          title="Failed to load scheduled emails"
+          description="There was an error communicating with the server. Please try again."
+        />
+      </div>
+    );
   }
 
   const getStatusBadge = (status: string) => {
@@ -186,7 +225,7 @@ export function ScheduledEmailsTable() {
                           variant="ghost"
                           size="sm"
                           className="h-8 text-zinc-400 hover:text-red-400"
-                          onClick={() => handleCancel(email.id)}
+                          onClick={() => handleCancelClick(email.id)}
                           disabled={cancelEmail.isPending}
                         >
                           <XCircle className="mr-2 h-4 w-4" />
@@ -198,7 +237,7 @@ export function ScheduledEmailsTable() {
                           variant="ghost"
                           size="sm"
                           className="h-8 text-zinc-400 hover:text-blue-400"
-                          onClick={() => handleRetry(email.id)}
+                          onClick={() => handleRetryClick(email.id)}
                           disabled={scheduleEmail.isPending}
                         >
                           <Play className="mr-2 h-4 w-4" />
@@ -237,6 +276,20 @@ export function ScheduledEmailsTable() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmState.open}
+        onOpenChange={(open) => setConfirmState(prev => ({ ...prev, open }))}
+        title={confirmState.type === "cancel" ? "Cancel Scheduled Email" : "Retry Failed Email"}
+        description={
+          confirmState.type === "cancel" 
+            ? "Are you sure you want to cancel this scheduled email? It will not be sent." 
+            : "Are you sure you want to retry sending this email?"
+        }
+        confirmLabel={confirmState.type === "cancel" ? "Yes, Cancel Email" : "Yes, Retry Now"}
+        isDestructive={confirmState.type === "cancel"}
+        onConfirm={executeConfirmAction}
+      />
     </div>
   );
 }

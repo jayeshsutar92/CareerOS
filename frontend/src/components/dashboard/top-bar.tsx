@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useSidebarStore } from "@/store/sidebar";
 import { Button } from "@/components/ui/button";
+import { CommandPalette } from "@/components/dashboard/command-palette";
 
 export function TopBar() {
   const { user, logout } = useAuth();
@@ -56,7 +57,9 @@ export function TopBar() {
       </Button>
 
       {/* Spacer pushes right-side items to the end */}
-      <div className="flex-1" />
+      <div className="flex-1 px-2 sm:px-4 flex items-center">
+        <CommandPalette />
+      </div>
 
       {/* Notification placeholder */}
       <Button

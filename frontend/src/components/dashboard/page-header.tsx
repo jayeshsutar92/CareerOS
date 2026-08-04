@@ -23,7 +23,7 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn("space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500", className)}>
       {breadcrumbs && breadcrumbs.length > 0 && (
         <Breadcrumbs items={breadcrumbs} />
       )}

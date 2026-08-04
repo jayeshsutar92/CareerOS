@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/dashboard/error-state";
+import { EmptyState } from "@/components/dashboard/empty-state";
 
 interface CompanyListProps {
   selectedId: string | null;
@@ -51,18 +54,30 @@ export function CompanyList({ selectedId, onSelect }: CompanyListProps) {
 
       <ScrollArea className="flex-1">
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center h-40 text-zinc-500">
-            <Loader2 className="h-6 w-6 animate-spin mb-2" />
-            <p className="text-sm">Loading companies...</p>
+          <div className="flex flex-col p-4 space-y-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex flex-col gap-2">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-3 w-1/4 mt-2" />
+              </div>
+            ))}
           </div>
         ) : isError ? (
-          <div className="flex items-center justify-center h-40 text-red-400 text-sm p-4 text-center">
-            Failed to load companies.
+          <div className="p-4">
+            <ErrorState 
+              title="Failed to load companies"
+              description="Could not load company list."
+              className="py-6 border-0 bg-transparent shadow-none"
+            />
           </div>
         ) : !data || data.items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 text-zinc-500 p-4 text-center">
-            <Building2 className="h-8 w-8 mb-2 opacity-50" />
-            <p className="text-sm">No companies found.</p>
+          <div className="pt-8">
+            <EmptyState 
+              title="No companies found"
+              description="You haven't analyzed any companies yet."
+              icon={Building2}
+            />
           </div>
         ) : (
           <div className="flex flex-col">
