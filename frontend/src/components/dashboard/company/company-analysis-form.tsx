@@ -31,7 +31,7 @@ export function CompanyAnalysisForm({ onSuccess }: { onSuccess?: (id: string) =>
     reset,
     formState: { errors },
   } = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(formSchema as any),
     defaultValues: {
       website_url: "",
     },

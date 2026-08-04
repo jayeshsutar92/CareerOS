@@ -2,14 +2,14 @@
 
 import { Calendar } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
-import { EmptyState } from "@/components/dashboard/empty-state";
+import { ScheduledEmailsTable } from "@/components/dashboard/scheduler/scheduled-emails-table";
 
 export default function SchedulerPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Scheduler"
-        description="Schedule and track email delivery."
+        title="Scheduler & Delivery"
+        description="Schedule, track, and manage email delivery."
         icon={Calendar}
         breadcrumbs={[
           { label: "Dashboard", href: "/dashboard" },
@@ -17,11 +17,9 @@ export default function SchedulerPage() {
         ]}
       />
 
-      <EmptyState
-        icon={Calendar}
-        title="No scheduled emails"
-        description="Once you generate personalized emails, you can schedule them for delivery from here."
-      />
+      <div className="flex flex-col gap-6">
+        <ScheduledEmailsTable />
+      </div>
     </div>
   );
 }
