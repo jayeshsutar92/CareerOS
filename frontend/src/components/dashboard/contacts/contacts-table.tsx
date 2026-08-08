@@ -14,7 +14,8 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  Eye
+  Eye,
+  MailPlus
 } from "lucide-react";
 import { toast } from "sonner";
 import { useContacts } from "@/hooks/use-contacts";
@@ -23,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/dashboard/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { emailService } from "@/services/email";
 import {
   Select,
   SelectContent,
@@ -73,6 +75,7 @@ export function ContactsTable() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleCategory, setRoleCategory] = useState<ContactRoleCategory | "all">("all");
   const [selectedContact, setSelectedContact] = useState<ContactRead | null>(null);
+  const [generatingEmailId, setGeneratingEmailId] = useState<string | null>(null);
 
   const { data, isLoading, isError, refetch, isRefetching } = useContacts({
     page,
@@ -94,6 +97,27 @@ export function ContactsTable() {
   const handleRoleChange = (value: string) => {
     setRoleCategory(value as ContactRoleCategory | "all");
     setPage(1);
+  };
+
+  const handleGenerateEmail = async (contact: ContactRead) => {
+    try {
+      setGeneratingEmailId(contact.id);
+      await emailService.generate({
+        template_content: "Hi {name},\n\nI noticed {company_name} is hiring in {location}. {company_insights}\n\nI have experience in this space: {portfolio_links}.\n\nBest,\n[Your Name]",
+        template_name: "Automated Discovery Template",
+        contact_id: contact.id,
+        company_intelligence_id: contact.company_id,
+        save_draft: true,
+        run_in_background: true,
+        custom_instructions: "Keep it concise and professional. Do not invent a resume link."
+      });
+      toast.success("Email generation started. Check the Email Queue shortly.");
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      toast.error(err?.response?.data?.detail || "Failed to generate email");
+    } finally {
+      setGeneratingEmailId(null);
+    }
   };
 
   return (
@@ -211,14 +235,31 @@ export function ContactsTable() {
                     {format(new Date(contact.created_at), "MMM d, yyyy")}
                   </TableCell>
                   <TableCell>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
-                      onClick={() => setSelectedContact(contact)}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-2 justify-end">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                        onClick={() => handleGenerateEmail(contact)}
+                        disabled={generatingEmailId === contact.id}
+                        title="Draft Email"
+                      >
+                        {generatingEmailId === contact.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <MailPlus className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                        onClick={() => setSelectedContact(contact)}
+                        title="View Details"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
