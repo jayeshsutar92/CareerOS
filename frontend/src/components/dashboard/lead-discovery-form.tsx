@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
+import { useDiscoverLeads } from "@/hooks/use-lead-discovery";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +33,7 @@ const formSchema = z.object({
 });
 
 export function LeadDiscoveryForm() {
-  const [isPending, setIsPending] = useState(false);
+  const discoverLeads = useDiscoverLeads();
 
   const {
     register,
@@ -50,14 +51,18 @@ export function LeadDiscoveryForm() {
   });
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    setIsPending(true);
-    // Note: Simulated backend action since the specific lead discovery API does not exist yet.
-    setTimeout(() => {
-      setIsPending(false);
+    try {
+      await discoverLeads.mutateAsync({
+        location: values.location,
+        workMode: values.workMode,
+        batchSize: values.batchSize,
+      });
       toast.success(
         `Discovery started for ${values.batchSize} leads in ${values.location} (${values.workMode}). Contacts will populate shortly.`
       );
-    }, 1500);
+    } catch {
+      toast.error("Failed to start lead discovery. Please try again.");
+    }
   };
 
   return (
@@ -121,10 +126,10 @@ export function LeadDiscoveryForm() {
 
           <Button
             type="submit"
-            disabled={isPending}
+            disabled={discoverLeads.isPending}
             className="w-full bg-white text-black hover:bg-zinc-200"
           >
-            {isPending ? (
+            {discoverLeads.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Discovering...
