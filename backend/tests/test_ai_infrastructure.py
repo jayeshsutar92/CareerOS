@@ -72,11 +72,11 @@ def test_cost_tracking_uses_configured_rates(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_provider_factory_uses_configured_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    reset_settings(monkeypatch, AI_PROVIDER="pydantic_ai")
+    reset_settings(monkeypatch, AI_PROVIDER="grok")
 
     provider = get_ai_provider()
 
-    assert provider.name == "pydantic_ai"
+    assert provider.name == "grok"
 
 
 def test_provider_factory_rejects_unknown_provider(monkeypatch: pytest.MonkeyPatch) -> None:

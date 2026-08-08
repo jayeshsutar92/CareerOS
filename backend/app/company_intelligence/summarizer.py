@@ -25,7 +25,7 @@ class CompanyIntelligenceSummarizer:
 
     async def _summarize_ai(self, raw_content: dict[str, Any]) -> dict[str, Any]:
         settings = get_settings()
-        if not settings.openai_api_key and not settings.ai_provider:
+        if not settings.grok_api_key and not settings.ai_provider:
             raise ValueError("No AI provider configured")
 
         ai_client = get_ai_client()
