@@ -6,8 +6,16 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup
 
+import json
+
+from app.ai.client import get_ai_client
+from app.ai.models import AIMessage, AIRequest
 from app.contact_discovery.normalizer import classify_role, normalize_whitespace
 from app.schemas.contact import ContactCandidate, ContactMethod
+
+GENERIC_EMAIL_RE = re.compile(
+    r"^(info|sales|careers|hello|contact|support|hr|jobs|admin|press|marketing|team)@", re.I
+)
 
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
 PHONE_RE = re.compile(r"(?:(?:\+?\d{1,3})?[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})")
@@ -40,7 +48,7 @@ class PublicContactFetcher:
 
 
 class PublicContactExtractor:
-    def extract(self, html: str, *, source_url: str, company_name: str) -> list[ContactCandidate]:
+    async def extract(self, html: str, *, source_url: str, company_name: str) -> list[ContactCandidate]:
         soup = BeautifulSoup(html, "html.parser")
         for tag in soup(["script", "style", "noscript"]):
             tag.decompose()
@@ -52,12 +60,69 @@ class PublicContactExtractor:
             company_name=company_name,
         )
 
-        for candidate in candidates:
-            candidate.contact_methods = self._merge_methods(
-                candidate.contact_methods, shared_methods
-            )
+        filtered_methods = []
+        for method in shared_methods:
+            if method.type == "email" and GENERIC_EMAIL_RE.match(method.value):
+                continue
+            filtered_methods.append(method)
+
+        candidates = await self._map_methods_to_candidates(candidates, filtered_methods)
 
         return self._dedupe_candidates(candidates)
+
+    async def _map_methods_to_candidates(
+        self, candidates: list[ContactCandidate], methods: list[ContactMethod]
+    ) -> list[ContactCandidate]:
+        if not candidates or not methods:
+            return candidates
+
+        if len(candidates) == 1:
+            candidates[0].contact_methods = self._merge_methods(
+                candidates[0].contact_methods, methods
+            )
+            return candidates
+
+        try:
+            client = get_ai_client()
+            
+            c_list = [{"id": i, "name": c.name, "role": c.role} for i, c in enumerate(candidates)]
+            m_list = [{"id": i, "type": m.type, "value": m.value} for i, m in enumerate(methods)]
+            
+            prompt = (
+                "You are an expert HR data extractor. Given a list of people and a list of contact methods (emails, linkedin, etc) found on a single page, "
+                "map the correct contact methods to the corresponding person based on standard naming conventions (e.g. j.smith@company.com belongs to John Smith).\n"
+                "Rules:\n"
+                "1. ONLY output JSON in this format: { \"mappings\": [ { \"candidate_id\": <int>, \"method_ids\": [<int>, <int>] } ] }\n"
+                "2. DO NOT fabricate or guess any emails not in the list.\n"
+                "3. If an email/linkedin clearly belongs to a specific person, map it. Otherwise, leave it unmapped.\n"
+            )
+            
+            user_msg = f"People:\n{json.dumps(c_list)}\n\nMethods:\n{json.dumps(m_list)}"
+            
+            request = AIRequest(
+                messages=[
+                    AIMessage(role="system", content=prompt),
+                    AIMessage(role="user", content=user_msg)
+                ],
+                temperature=0.0
+            )
+            response = await client.complete(request)
+            content = response.content.strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            
+            data = json.loads(content)
+            mappings = {item.get("candidate_id"): item.get("method_ids", []) for item in data.get("mappings", [])}
+            
+            for i, candidate in enumerate(candidates):
+                matched_method_ids = mappings.get(i, [])
+                matched_methods = [methods[m_id] for m_id in matched_method_ids if m_id < len(methods)]
+                candidate.contact_methods = self._merge_methods(candidate.contact_methods, matched_methods)
+                
+        except Exception:
+            pass
+
+        return candidates
 
     def _extract_from_text(
         self,

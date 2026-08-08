@@ -57,7 +57,7 @@ class ContactService:
 
         for source_url in payload.source_urls:
             html = await fetcher.fetch(str(source_url))
-            candidates = extractor.extract(
+            candidates = await extractor.extract(
                 html,
                 source_url=str(source_url),
                 company_name=payload.company_name,

@@ -15,7 +15,8 @@ class FakeTask:
     id = "task-1"
 
 
-def test_contact_extractor_finds_public_recruiting_contacts() -> None:
+@pytest.mark.asyncio
+async def test_contact_extractor_finds_public_recruiting_contacts() -> None:
     html = """
     <html>
       <body>
@@ -26,7 +27,7 @@ def test_contact_extractor_finds_public_recruiting_contacts() -> None:
     </html>
     """
 
-    contacts = PublicContactExtractor().extract(
+    contacts = await PublicContactExtractor().extract(
         html,
         source_url="https://example.com/team",
         company_name="Example Inc",
