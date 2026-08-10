@@ -41,8 +41,8 @@ class PublicContactFetcher:
         self.timeout_seconds = timeout_seconds
 
     async def fetch(self, url: str) -> str:
-        async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True) as client:
-            response = await client.get(url, headers={"User-Agent": "CareerOS contact discovery"})
+        async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True, verify=False) as client:
+            response = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
             response.raise_for_status()
             return response.text
 
@@ -54,7 +54,7 @@ class PublicContactExtractor:
             tag.decompose()
 
         shared_methods = self._extract_contact_methods(html, source_url)
-        candidates = self._extract_from_text(
+        candidates = await self._extract_from_text(
             soup.get_text("\n"),
             source_url=source_url,
             company_name=company_name,
@@ -124,7 +124,7 @@ class PublicContactExtractor:
 
         return candidates
 
-    def _extract_from_text(
+    async def _extract_from_text(
         self,
         text: str,
         *,
@@ -132,23 +132,56 @@ class PublicContactExtractor:
         company_name: str,
     ) -> list[ContactCandidate]:
         candidates: list[ContactCandidate] = []
-        for line in text.splitlines():
-            line = normalize_whitespace(line)
-            if not ROLE_RE.search(line):
-                continue
-            for match in NAME_ROLE_RE.finditer(line):
-                role = normalize_whitespace(match.group("role"))
-                if classify_role(role) == "other":
-                    continue
-                candidates.append(
-                    ContactCandidate(
-                        name=normalize_whitespace(match.group("name")),
-                        role=role,
-                        company_name=company_name,
-                        contact_methods=[ContactMethod(type="source_page", value=source_url)],
-                        source_url=source_url,
+        
+        # Limit text to ~20k characters to prevent huge token costs
+        cleaned_text = text[:20000]
+        
+        prompt = (
+            f"You are a recruitment assistant. Analyze the text below from a company website ({company_name}) "
+            "and find all HR, recruiters, talent acquisition, and hiring managers mentioned. "
+            "Only return a JSON array containing objects with 'name' and 'role'. "
+            "If none are found, return an empty array [].\n\n"
+            f"Text content:\n{cleaned_text}"
+        )
+        
+        try:
+            client = get_ai_client()
+            request = AIRequest(
+                messages=[
+                    AIMessage(role="system", content="Output valid JSON array of objects only. No markdown formatting like ```json. Example: [{\"name\": \"John\", \"role\": \"HR\"}]"),
+                    AIMessage(role="user", content=prompt)
+                ],
+                temperature=0.0
+            )
+            response = await client.complete(request)
+            content = response.content.strip()
+            
+            if content.startswith("```"):
+                content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            
+            if content.startswith("json"):
+                content = content[4:].strip()
+                
+            data = json.loads(content)
+            
+            for item in data:
+                if "name" in item and "role" in item:
+                    role = normalize_whitespace(item["role"])
+                    if classify_role(role) == "other":
+                        continue
+                    candidates.append(
+                        ContactCandidate(
+                            name=normalize_whitespace(item["name"]),
+                            role=role,
+                            company_name=company_name,
+                            contact_methods=[ContactMethod(type="source_page", value=source_url)],
+                            source_url=source_url,
+                        )
                     )
-                )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"AI candidate extraction failed: {e}")
+            
         return candidates
 
     def _extract_contact_methods(self, html: str, source_url: str) -> list[ContactMethod]:

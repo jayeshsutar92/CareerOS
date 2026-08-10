@@ -19,7 +19,7 @@ class GrokProvider(AIProvider):
         if not settings.grok_api_key:
             raise AIConfigurationError("GROK_API_KEY is required for the Grok provider")
 
-        url = "https://api.x.ai/v1/chat/completions"
+        url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {settings.grok_api_key}",
             "Content-Type": "application/json"
