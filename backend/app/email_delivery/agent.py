@@ -7,7 +7,9 @@ from uuid import UUID
 from app.agents.base import AgentRequest, BaseAgent
 from app.agents.registry import agent_registry
 from app.db.session import AsyncSessionLocal
+from app.core.config import get_settings
 from app.email_delivery.providers.mock import MockEmailProvider
+from app.email_delivery.providers.smtp import SmtpEmailProvider
 from app.models.email import EmailStatus
 from app.repositories.email import EmailRepository
 from app.services.email_delivery import EmailDeliveryService
@@ -21,8 +23,11 @@ class EmailDeliveryAgent(BaseAgent):
 
     def __init__(self) -> None:
         super().__init__()
-        # In the future, this can be dynamically loaded or configured based on settings
-        self.provider = MockEmailProvider()
+        self.settings = get_settings()
+        if self.settings.smtp_host and self.settings.smtp_user:
+            self.provider = SmtpEmailProvider()
+        else:
+            self.provider = MockEmailProvider()
 
     async def run(self, request: AgentRequest) -> dict[str, Any]:
         email_id_str = request.payload.get("email_id")
@@ -36,6 +41,32 @@ class EmailDeliveryAgent(BaseAgent):
             repo = EmailRepository(session)
             
             try:
+                email = await repo.get_by_id(email_id)
+                if not email:
+                    raise ValueError("Email not found")
+                
+                # Resolve recipient email address
+                recipient_email = None
+                if email.recruiter_id:
+                    from app.repositories.contact import ContactRepository
+                    contact_repo = ContactRepository(session)
+                    contact = await contact_repo.get_by_id(email.recruiter_id)
+                    if contact:
+                        for method in contact.contact_methods:
+                            if method.get("type") == "email":
+                                recipient_email = method.get("value")
+                                break
+                
+                if not recipient_email:
+                    # For testing/demo purposes, we could fallback, but here we require it
+                    # Just mock it if mock provider
+                    if isinstance(self.provider, MockEmailProvider):
+                        recipient_email = "test@example.com"
+                    else:
+                        raise ValueError("Recipient email address not found for this contact")
+                
+                email.resolved_recipient_email = recipient_email
+                
                 email = await service.process_delivery(email_id, self.provider)
                 return {
                     "status": "completed",

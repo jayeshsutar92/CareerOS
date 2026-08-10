@@ -31,7 +31,7 @@ class LeadDiscoveryAgent(BaseAgent):
         # 1. Search for public company URLs
         search_provider = get_job_search_provider()
         try:
-            urls = search_provider.search_companies(location, work_mode)
+            urls = await search_provider.search_companies(location, work_mode)
         except Exception as e:
             logger.error(f"Failed to search for companies: {e}")
             urls = []

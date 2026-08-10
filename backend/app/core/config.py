@@ -104,6 +104,11 @@ class Settings(BaseSettings):
         default=60,
         validation_alias="EMAIL_COOLDOWN_SECONDS",
     )
+    smtp_host: str = Field(default="", validation_alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, validation_alias="SMTP_PORT")
+    smtp_user: str = Field(default="", validation_alias="SMTP_USER")
+    smtp_password: str = Field(default="", validation_alias="SMTP_PASSWORD")
+    smtp_from_email: str = Field(default="", validation_alias="SMTP_FROM_EMAIL")
 
     @property
     def is_production(self) -> bool:
