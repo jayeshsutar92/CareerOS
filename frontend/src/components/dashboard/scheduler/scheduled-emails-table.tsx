@@ -60,14 +60,14 @@ export function ScheduledEmailsTable() {
       try {
         await cancelEmail.mutateAsync(confirmState.id);
         toast.success("Email cancelled successfully");
-      } catch (error: any) {
+      } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
         toast.error(error?.response?.data?.detail || "Failed to cancel email");
       }
     } else if (confirmState.type === "retry") {
       try {
         await scheduleEmail.mutateAsync({ emailId: confirmState.id, request: { scheduled_at: null } });
         toast.success("Email queued for sending");
-      } catch (error: any) {
+      } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
         toast.error(error?.response?.data?.detail || "Failed to retry email");
       }
     }
@@ -131,6 +131,8 @@ export function ScheduledEmailsTable() {
         return <Badge variant="destructive" className="bg-red-500/10 text-red-400">Failed</Badge>;
       case "cancelled":
         return <Badge variant="outline" className="text-zinc-400">Cancelled</Badge>;
+      case "draft":
+        return <Badge variant="outline" className="text-zinc-400">Draft</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -164,6 +166,7 @@ export function ScheduledEmailsTable() {
               <SelectItem value="sent">Sent</SelectItem>
               <SelectItem value="failed">Failed</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -232,7 +235,7 @@ export function ScheduledEmailsTable() {
                           Cancel
                         </Button>
                       )}
-                      {(email.status === "failed" || email.status === "cancelled") && (
+                      {(email.status === "draft" || email.status === "failed" || email.status === "cancelled") && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -241,7 +244,7 @@ export function ScheduledEmailsTable() {
                           disabled={scheduleEmail.isPending}
                         >
                           <Play className="mr-2 h-4 w-4" />
-                          Retry
+                          {email.status === "draft" ? "Send Now" : "Retry"}
                         </Button>
                       )}
                     </div>
@@ -284,9 +287,9 @@ export function ScheduledEmailsTable() {
         description={
           confirmState.type === "cancel" 
             ? "Are you sure you want to cancel this scheduled email? It will not be sent." 
-            : "Are you sure you want to retry sending this email?"
+            : "Are you sure you want to send this email?"
         }
-        confirmLabel={confirmState.type === "cancel" ? "Yes, Cancel Email" : "Yes, Retry Now"}
+        confirmLabel={confirmState.type === "cancel" ? "Yes, Cancel Email" : "Yes, Send Now"}
         isDestructive={confirmState.type === "cancel"}
         onConfirm={executeConfirmAction}
       />

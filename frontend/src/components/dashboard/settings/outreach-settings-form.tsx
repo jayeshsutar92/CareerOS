@@ -41,6 +41,7 @@ export function OutreachSettingsForm() {
     formState: { errors, isDirty },
     reset,
   } = useForm<OutreachFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(outreachSchema as any),
     defaultValues: {
       emailSignature: outreach.emailSignature || "",

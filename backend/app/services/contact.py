@@ -63,7 +63,11 @@ class ContactService:
                 company_name=payload.company_name,
             )
             for candidate in candidates:
-                stored_contacts.append(await self.upsert_candidate(candidate, payload.company_id))
+                try:
+                    stored_contacts.append(await self.upsert_candidate(candidate, payload.company_id))
+                except HTTPException:
+                    # Skip candidates with unsupported roles (like 'other')
+                    pass
 
         return stored_contacts
 

@@ -114,11 +114,10 @@ async def list_scheduled_emails(
     session: AsyncSession = Depends(get_db_session),
 ) -> Any:
     """List all scheduled emails for the current user."""
-    from app.models.email import EmailStatus
     from app.repositories.email import EmailRepository
-    
     repo = EmailRepository(session)
-    emails = await repo.list_by_status(current_user.id, EmailStatus.SCHEDULED)
+    # Fetch all emails (drafts, scheduled, sending, sent, failed) for the queue
+    emails, _ = await repo.list_by_user_id(current_user.id, page=1, page_size=100)
     
     return {
         "status": "success",

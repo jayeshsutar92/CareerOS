@@ -39,6 +39,7 @@ export function ProfileSettingsForm() {
     formState: { errors, isDirty },
     reset,
   } = useForm<ProfileFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(profileSchema as any),
     defaultValues: {
       name: profile.name || user?.full_name || "",

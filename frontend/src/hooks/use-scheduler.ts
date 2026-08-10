@@ -6,6 +6,7 @@ export function useScheduledEmails() {
   return useQuery({
     queryKey: ["scheduled-emails"],
     queryFn: () => schedulerService.listScheduledEmails(),
+    refetchInterval: 5000,
   });
 }
 

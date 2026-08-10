@@ -41,7 +41,8 @@ export function LeadDiscoveryForm() {
     watch,
     formState: { errors },
   } = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(formSchema as any),
     defaultValues: {
       location: "Mumbai",
       workMode: "remote",

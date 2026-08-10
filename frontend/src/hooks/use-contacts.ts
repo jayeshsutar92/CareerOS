@@ -7,6 +7,7 @@ export function useContacts(params: ContactListParams = {}) {
     queryKey: ["contacts", params],
     queryFn: () => contactService.getContacts(params),
     placeholderData: (previousData) => previousData,
+    refetchInterval: 5000,
   });
 }
 

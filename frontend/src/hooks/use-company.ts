@@ -7,6 +7,7 @@ export function useCompanyIntelligenceList(params: CompanyListParams = {}) {
     queryKey: ["company-intelligence", params],
     queryFn: () => companyService.getCompanyIntelligenceList(params),
     placeholderData: (previousData) => previousData,
+    refetchInterval: 5000,
   });
 }
 

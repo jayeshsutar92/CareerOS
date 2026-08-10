@@ -4,6 +4,8 @@ from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.api.deps import get_current_user
+from app.models.user import User
 from app.schemas.lead_discovery import LeadDiscoveryRequest
 from app.workers.queue import enqueue_task
 from app.core.config import get_settings
@@ -18,8 +20,10 @@ class LeadDiscoveryResponse(BaseModel):
 async def start_lead_discovery(
     payload: LeadDiscoveryRequest,
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: User = Depends(get_current_user),
 ) -> LeadDiscoveryResponse:
     settings = get_settings()
+    payload.user_id = str(current_user.id)
     job = await enqueue_task(
         settings.agent_worker_task_name,
         {

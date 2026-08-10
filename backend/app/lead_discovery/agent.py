@@ -26,6 +26,7 @@ class LeadDiscoveryAgent(BaseAgent):
         location = request.payload.get("location", "Mumbai")
         work_mode = request.payload.get("work_mode", "remote")
         batch_size = request.payload.get("batch_size", 5)
+        user_id = request.payload.get("user_id")
 
         # 1. Search for public company URLs
         search_provider = get_job_search_provider()
@@ -95,6 +96,7 @@ class LeadDiscoveryAgent(BaseAgent):
                             template_name="Automated Discovery Template",
                             contact_id=contact.id,
                             company_intelligence_id=company_intel_id,
+                            user_id=user_id,
                             save_draft=True,
                             run_in_background=False,
                             custom_instructions="Keep it concise and professional. Do not invent a resume link."

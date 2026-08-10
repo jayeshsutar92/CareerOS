@@ -31,6 +31,7 @@ export function CompanyAnalysisForm({ onSuccess }: { onSuccess?: (id: string) =>
     reset,
     formState: { errors },
   } = useForm<z.infer<typeof formSchema>>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(formSchema as any),
     defaultValues: {
       website_url: "",

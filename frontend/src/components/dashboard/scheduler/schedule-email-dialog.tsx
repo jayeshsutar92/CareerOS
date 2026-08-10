@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { Calendar, Clock, Send } from "lucide-react";
 import {
   Dialog,
@@ -48,7 +48,7 @@ export function ScheduleEmailDialog({ emailId, trigger, onSuccess }: ScheduleEma
       toast.success("Email queued for immediate delivery");
       setOpen(false);
       onSuccess?.();
-    } catch (error: any) {
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       toast.error(error?.response?.data?.detail || "Failed to send email");
     }
   };
@@ -76,7 +76,7 @@ export function ScheduleEmailDialog({ emailId, trigger, onSuccess }: ScheduleEma
       toast.success(`Email scheduled for ${format(dateObj, "PPp")}`);
       setOpen(false);
       onSuccess?.();
-    } catch (error: any) {
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       toast.error(error?.response?.data?.detail || "Failed to schedule email");
     }
   };

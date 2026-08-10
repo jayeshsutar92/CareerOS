@@ -8,9 +8,9 @@ export function useDiscoverLeads() {
     mutationFn: (request: LeadDiscoveryRequest) =>
       leadDiscoveryService.discoverLeads(request),
     onSuccess: () => {
-      // Invalidate both contacts and emails because leads discovery populates both
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["emails"] });
+      queryClient.invalidateQueries({ queryKey: ["scheduled-emails"] });
+      queryClient.invalidateQueries({ queryKey: ["company-intelligence"] });
     },
   });
 }

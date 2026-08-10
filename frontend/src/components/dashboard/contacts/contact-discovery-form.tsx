@@ -41,6 +41,7 @@ export function ContactDiscoveryForm() {
     reset,
     formState: { errors },
   } = useForm<z.infer<typeof formSchema>>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(formSchema as any),
     defaultValues: {
       company_name: "",
