@@ -63,6 +63,7 @@ class EmailPersonalizationService:
                     user_id=aggregated_payload.user_id,
                     subject=result_read.subject,
                     body=result_read.body,
+                    recruiter_id=aggregated_payload.contact_id,
                 )
                 result_read.id = draft_record.id
                 result_read.status = "draft"

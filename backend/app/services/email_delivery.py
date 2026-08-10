@@ -31,31 +31,26 @@ class EmailDeliveryService:
         self.settings = get_settings()
         self.redis = get_redis_client()
 
-    async def _check_rate_limits(self, user_id: UUID) -> None:
+    async def _check_and_apply_rate_limits(self, user_id: UUID) -> None:
         today = datetime.now(UTC).strftime("%Y-%m-%d")
         daily_limit_key = build_redis_key("emails", "daily_limit", str(user_id), today)
         cooldown_key = build_redis_key("emails", "cooldown", str(user_id))
 
-        # Check cooldown
-        if await self.redis.exists(cooldown_key):
+        # Check cooldown atomically
+        cooldown_set = await self.redis.set(cooldown_key, "1", ex=self.settings.email_cooldown_seconds, nx=True)
+        if not cooldown_set:
             raise CooldownActive("You are sending emails too quickly. Please wait.")
 
-        # Check and increment daily limit
-        current_count = await self.redis.get(daily_limit_key)
-        if current_count and int(current_count) >= self.settings.email_daily_limit_per_user:
-            raise RateLimitExceeded(
-                f"Daily limit of {self.settings.email_daily_limit_per_user} emails reached."
-            )
-
-    async def _apply_rate_limits(self, user_id: UUID) -> None:
-        today = datetime.now(UTC).strftime("%Y-%m-%d")
-        daily_limit_key = build_redis_key("emails", "daily_limit", str(user_id), today)
-        cooldown_key = build_redis_key("emails", "cooldown", str(user_id))
-
-        await self.redis.set(cooldown_key, "1", ex=self.settings.email_cooldown_seconds)
+        # Increment daily limit
         count = await self.redis.incr(daily_limit_key)
         if count == 1:
             await self.redis.expire(daily_limit_key, 86400)
+            
+        if count > self.settings.email_daily_limit_per_user:
+            await self.redis.decr(daily_limit_key)
+            raise RateLimitExceeded(
+                f"Daily limit of {self.settings.email_daily_limit_per_user} emails reached."
+            )
 
     async def schedule_email(self, email_id: UUID, request: EmailScheduleRequest) -> Email:
         email = await self.repo.get_by_id(email_id)
@@ -126,7 +121,7 @@ class EmailDeliveryService:
         if email.status not in (EmailStatus.SCHEDULED, EmailStatus.SENDING, EmailStatus.FAILED):
             raise InvalidStateTransition(f"Cannot process delivery for email in {email.status} state")
 
-        await self._check_rate_limits(email.user_id)
+        await self._check_and_apply_rate_limits(email.user_id)
 
         # Transition to SENDING
         email = await self.repo.update_email(
@@ -137,7 +132,6 @@ class EmailDeliveryService:
 
         try:
             result = await provider.send_email(email)
-            await self._apply_rate_limits(email.user_id)
             email = await self.repo.update_email(
                 email,
                 status=EmailStatus.SENT,

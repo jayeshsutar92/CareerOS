@@ -18,6 +18,8 @@ services:
     build:
       context: ./backend
       target: runtime
+    env_file:
+      - ./backend/.env
     environment:
       APP_ENV: production
       LOG_LEVEL: INFO
@@ -69,6 +71,8 @@ services:
       context: ./backend
       target: runtime
     command: python -m app.workers.entrypoint
+    env_file:
+      - ./backend/.env
     environment:
       APP_ENV: production
       LOG_LEVEL: INFO
@@ -131,6 +135,8 @@ services:
       context: ./backend
       target: builder
     command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - ./backend/.env
     environment:
       APP_ENV: development
       LOG_LEVEL: DEBUG
@@ -186,6 +192,8 @@ services:
       context: ./backend
       target: builder
     command: uv run python -m app.workers.entrypoint
+    env_file:
+      - ./backend/.env
     environment:
       APP_ENV: development
       LOG_LEVEL: DEBUG
