@@ -27,8 +27,10 @@ from app.workers.queue import enqueue_task
 
 
 class ContactService:
-    def __init__(self, session: AsyncSession) -> None:
-        self.repository = ContactRepository(session)
+    def __init__(self, session: AsyncSession, user_id: UUID | None = None) -> None:
+        self.session = session
+        self.user_id = user_id
+        self.repository = ContactRepository(session, user_id)
 
     async def discover(self, payload: ContactDiscoveryRequest) -> ContactDiscoveryResponse:
         if payload.run_in_background:
@@ -38,6 +40,7 @@ class ContactService:
                 {
                     "agent_name": "contact_discovery",
                     "payload": payload.model_dump(mode="json", exclude={"run_in_background"}),
+                    "context": {"user_id": str(self.user_id)} if self.user_id else None,
                 },
             )
             return ContactDiscoveryResponse(status="queued", task_id=task.id)
@@ -94,6 +97,7 @@ class ContactService:
 
         contact = Contact(
             company_id=company_id,
+            user_id=self.user_id,
             name=normalize_whitespace(candidate.name),
             role=normalize_whitespace(candidate.role),
             role_category=role_category,

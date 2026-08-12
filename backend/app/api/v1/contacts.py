@@ -16,6 +16,9 @@ from app.schemas.contact import (
 )
 from app.services.contact import ContactService
 
+from app.api.deps import get_current_user
+from app.models.user import User
+
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 
 
@@ -25,13 +28,15 @@ router = APIRouter(prefix="/contacts", tags=["contacts"])
 async def discover_contacts(
     payload: ContactDiscoveryRequest,
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContactDiscoveryResponse:
-    return await ContactService(session).discover(payload)
+    return await ContactService(session, current_user.id).discover(payload)
 
 
 @router.get("", response_model=ContactListResponse)
 async def list_contacts(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     search: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
@@ -40,7 +45,7 @@ async def list_contacts(
     sort_by: ContactSortField = "created_at",
     sort_order: SortOrder = "desc",
 ) -> ContactListResponse:
-    return await ContactService(session).list(
+    return await ContactService(session, current_user.id).list(
         page=page,
         page_size=page_size,
         search=search,
@@ -54,11 +59,12 @@ async def list_contacts(
 @router.get("/search", response_model=ContactListResponse)
 async def search_contacts(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
     q: Annotated[str, Query(min_length=1, max_length=255)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> ContactListResponse:
-    return await ContactService(session).list(
+    return await ContactService(session, current_user.id).list(
         page=page,
         page_size=page_size,
         search=q,
@@ -73,6 +79,7 @@ async def search_contacts(
 async def get_contact(
     contact_id: UUID,
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContactRead:
-    contact = await ContactService(session).get(contact_id)
+    contact = await ContactService(session, current_user.id).get(contact_id)
     return ContactRead.model_validate(contact)

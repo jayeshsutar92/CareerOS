@@ -8,8 +8,9 @@ from app.schemas.contact import ContactSortField, SortOrder
 
 
 class ContactRepository:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, user_id: UUID) -> None:
         self.session = session
+        self.user_id = user_id
 
     async def create(self, contact: Contact) -> Contact:
         self.session.add(contact)
@@ -18,11 +19,15 @@ class ContactRepository:
         return contact
 
     async def get_by_id(self, contact_id: UUID) -> Contact | None:
-        result = await self.session.execute(select(Contact).where(Contact.id == contact_id))
+        result = await self.session.execute(
+            select(Contact).where(Contact.id == contact_id, Contact.user_id == self.user_id)
+        )
         return result.scalar_one_or_none()
 
     async def get_by_dedupe_key(self, dedupe_key: str) -> Contact | None:
-        result = await self.session.execute(select(Contact).where(Contact.dedupe_key == dedupe_key))
+        result = await self.session.execute(
+            select(Contact).where(Contact.dedupe_key == dedupe_key, Contact.user_id == self.user_id)
+        )
         return result.scalar_one_or_none()
 
     async def list(
@@ -72,6 +77,8 @@ class ContactRepository:
         company_name: str | None,
         role_category: str | None,
     ) -> Select:
+        statement = statement.where(Contact.user_id == self.user_id)
+        
         if search:
             search_term = f"%{search}%"
             statement = statement.where(

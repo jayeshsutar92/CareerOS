@@ -13,11 +13,17 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 class Contact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "contacts"
     __table_args__ = (
-        UniqueConstraint("dedupe_key", name="uq_contacts_dedupe_key"),
+        UniqueConstraint("user_id", "dedupe_key", name="uq_contacts_user_dedupe_key"),
         Index("ix_contacts_company_role", "company_name", "role_category"),
         Index("ix_contacts_name_role", "name", "role"),
     )
 
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     company_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("companies.id", ondelete="SET NULL"),
@@ -32,7 +38,7 @@ class Contact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         JSON, nullable=False, default=list
     )
     source_url: Mapped[str] = mapped_column(String(2048), nullable=False)
-    dedupe_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True, index=True)
+    dedupe_key: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     company = relationship("Company")

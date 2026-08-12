@@ -14,11 +14,15 @@ class ContactDiscoveryAgent(BaseAgent):
     description = "Discovers public recruiting contacts from supplied public source URLs."
 
     async def run(self, request: AgentRequest) -> dict[str, Any]:
+        from uuid import UUID
+        user_id_str = request.context.user_id if request.context else None
+        user_id = UUID(user_id_str) if user_id_str else None
+
         payload = ContactDiscoveryRequest.model_validate(
             {**request.payload, "run_in_background": False}
         )
         async with AsyncSessionLocal() as session:
-            contacts = await ContactService(session).discover_now(payload)
+            contacts = await ContactService(session, user_id=user_id).discover_now(payload)
         return {
             "discovered": len(contacts),
             "stored": len(contacts),
