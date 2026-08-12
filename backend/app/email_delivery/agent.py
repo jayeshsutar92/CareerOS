@@ -49,7 +49,7 @@ class EmailDeliveryAgent(BaseAgent):
                 recipient_email = None
                 if email.recruiter_id:
                     from app.repositories.contact import ContactRepository
-                    contact_repo = ContactRepository(session)
+                    contact_repo = ContactRepository(session, email.user_id)
                     contact = await contact_repo.get_by_id(email.recruiter_id)
                     if contact:
                         for method in contact.contact_methods:

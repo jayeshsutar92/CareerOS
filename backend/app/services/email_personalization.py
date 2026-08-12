@@ -96,7 +96,10 @@ class EmailPersonalizationService:
         if payload_copy.contact_id and not payload_copy.recipient:
             from app.models.contact import Contact
             contact_res = await self.session.execute(
-                select(Contact).where(Contact.id == payload_copy.contact_id)
+                select(Contact).where(
+                    Contact.id == payload_copy.contact_id,
+                    Contact.user_id == payload_copy.user_id
+                )
             )
             contact = contact_res.scalar_one_or_none()
             if contact:
