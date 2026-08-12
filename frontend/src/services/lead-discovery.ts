@@ -9,8 +9,12 @@ export interface LeadDiscoveryRequest {
 export interface LeadDiscoveryResponse {
   status: string;
   task_id: string | null;
+}
+
+export interface TaskStatusResponse {
+  status: string;
   error?: string | null;
-  contacts_discovered?: number;
+  result?: any;
 }
 
 export const leadDiscoveryService = {
@@ -24,4 +28,9 @@ export const leadDiscoveryService = {
     const { data } = await api.post("/lead-discovery", payload);
     return data;
   },
+  
+  getTaskStatus: async (taskId: string): Promise<TaskStatusResponse> => {
+    const { data } = await api.get(`/tasks/${taskId}`);
+    return data;
+  }
 };

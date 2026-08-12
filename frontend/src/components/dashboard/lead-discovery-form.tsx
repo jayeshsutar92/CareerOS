@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { useDiscoverLeads } from "@/hooks/use-lead-discovery";
+import { leadDiscoveryService } from "@/services/lead-discovery";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +36,8 @@ const formSchema = z.object({
 
 export function LeadDiscoveryForm() {
   const discoverLeads = useDiscoverLeads();
+  const queryClient = useQueryClient();
+  const [pollingStatus, setPollingStatus] = useState<string | null>(null);
 
   const {
     register,
@@ -52,17 +57,66 @@ export function LeadDiscoveryForm() {
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
+      setPollingStatus("searching / processing");
       const response = await discoverLeads.mutateAsync({
         location: values.location,
         workMode: values.workMode,
         batchSize: values.batchSize,
       });
-      toast.success(
-        `Successfully discovered ${response.contacts_discovered} leads in ${values.location} (${values.workMode}).`
-      );
+
+      if (!response.task_id) {
+        setPollingStatus("search failure");
+        toast.error("Failed to enqueue task.");
+        setTimeout(() => setPollingStatus(null), 3000);
+        return;
+      }
+
+      const poll = async () => {
+        try {
+          const res = await leadDiscoveryService.getTaskStatus(response.task_id!);
+          if (["processing", "queued", "running", "scheduled"].includes(res.status)) {
+            setTimeout(poll, 2000);
+          } else if (res.status === "succeeded") {
+            // Extract the agent output from the orchestration result
+            const agentOutput = res.result?.results?.[0]?.output || res.result;
+            
+            if (agentOutput?.status === "failed") {
+              setPollingStatus("search failure");
+              toast.error(agentOutput.error || "Company URL discovery failed");
+              setTimeout(() => setPollingStatus(null), 3000);
+            } else {
+              const contactsDiscovered = agentOutput?.contacts_discovered || 0;
+              if (contactsDiscovered === 0) {
+                setPollingStatus("no results");
+                toast.error("No contacts found on discovered domains");
+              } else if (contactsDiscovered < values.batchSize) {
+                setPollingStatus(`partial results: ${contactsDiscovered} found`);
+                toast.success(`Partial discovery: ${contactsDiscovered} leads found.`);
+              } else {
+                setPollingStatus(`contacts found: ${contactsDiscovered}`);
+                toast.success(`Successfully discovered ${contactsDiscovered} leads.`);
+              }
+              queryClient.invalidateQueries({ queryKey: ["contacts"] });
+              setTimeout(() => setPollingStatus(null), 3000);
+            }
+          } else if (res.status === "failed") {
+            setPollingStatus("search failure");
+            toast.error(res.error || "Company URL discovery failed");
+            setTimeout(() => setPollingStatus(null), 3000);
+          }
+        } catch (err: any) {
+          setPollingStatus("search failure");
+          toast.error("Failed to check task status.");
+          setTimeout(() => setPollingStatus(null), 3000);
+        }
+      };
+
+      setTimeout(poll, 2000);
     } catch (error: any) {
+      setPollingStatus("search failure");
       const errorMessage = error.response?.data?.error?.message || error.response?.data?.detail || "Failed to start lead discovery. Please try again.";
       toast.error(errorMessage);
+      setTimeout(() => setPollingStatus(null), 3000);
     }
   };
 
@@ -127,13 +181,13 @@ export function LeadDiscoveryForm() {
 
           <Button
             type="submit"
-            disabled={discoverLeads.isPending}
+            disabled={discoverLeads.isPending || pollingStatus !== null}
             className="w-full bg-white text-black hover:bg-zinc-200"
           >
-            {discoverLeads.isPending ? (
+            {discoverLeads.isPending || pollingStatus !== null ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Discovering...
+                {pollingStatus ? pollingStatus : "Starting..."}
               </>
             ) : (
               <>

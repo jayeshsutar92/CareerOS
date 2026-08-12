@@ -21,31 +21,21 @@ class LeadDiscoveryResponse(BaseModel):
     error: str | None = None
     contacts_discovered: int | None = None
 
-@router.post("", response_model=LeadDiscoveryResponse, status_code=status.HTTP_200_OK)
+@router.post("", response_model=LeadDiscoveryResponse, status_code=status.HTTP_202_ACCEPTED)
 async def start_lead_discovery(
     payload: LeadDiscoveryRequest,
     session: Annotated[AsyncSession, Depends(get_db_session)],
     current_user: User = Depends(get_current_user),
 ) -> LeadDiscoveryResponse:
+    settings = get_settings()
     payload.user_id = str(current_user.id)
     
-    agent = agent_registry.get("lead_discovery")
-    if not agent:
-        return LeadDiscoveryResponse(status="failed", error="Agent not found")
-        
-    req = AgentRequest(payload=payload.model_dump())
-    result = await agent.run(req)
-    
-    if result.get("status") == "failed":
-        # Can return 400 if we want, or just return status="failed"
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail=result.get("error"))
-        
-    if result.get("contacts_discovered", 0) == 0:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail="No contacts found on discovered domains")
-        
-    return LeadDiscoveryResponse(
-        status="completed", 
-        contacts_discovered=result.get("contacts_discovered", 0)
+    job = await enqueue_task(
+        settings.agent_worker_task_name,
+        {
+            "agent_name": "lead_discovery",
+            "payload": payload.model_dump(),
+        },
     )
+    
+    return LeadDiscoveryResponse(status="queued", task_id=job.id)
