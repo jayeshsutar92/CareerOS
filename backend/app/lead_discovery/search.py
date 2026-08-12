@@ -6,19 +6,25 @@ class JobSearchProvider(Protocol):
     async def search_companies(self, location: str, work_mode: str) -> list[str]:
         ...
 
+from duckduckgo_search import DDGS
+
 class DuckDuckGoJobSearchProvider:
     def __init__(self, max_results: int = 5):
         self.max_results = max_results
         
     async def search_companies(self, location: str, work_mode: str) -> list[str]:
-        query = f'"{work_mode}" jobs in "{location}" software engineering hiring OR careers -site:linkedin.com/jobs -site:glassdoor.com'
-        results = DDGS().text(query, max_results=self.max_results)
+        # Filter out common job boards so we get actual company career pages
+        exclusions = "-site:linkedin.com -site:glassdoor.com -site:glassdoor.co.in -site:naukri.com -site:indeed.com -site:instahyre.com -site:foundit.in -site:simplyhired.co.in -site:wellfound.com"
+        query = f'"{work_mode}" "{location}" (software engineering OR developer) hiring careers {exclusions}'
         
-        # We just extract the base titles or company names if possible, but actually DDG returns snippets
-        # Let's extract URLs to search for contacts
-        urls = [r["href"] for r in results if "href" in r]
-        
-        return urls
+        try:
+            results = DDGS().text(query, max_results=self.max_results)
+            urls = [r["href"] for r in results if "href" in r]
+            return urls
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"DuckDuckGoJobSearchProvider failed: {e}")
+            return []
 
 class AISearchProvider:
     def __init__(self, max_results: int = 5):
@@ -63,5 +69,5 @@ class AISearchProvider:
             return []
 
 def get_job_search_provider() -> JobSearchProvider:
-    return AISearchProvider(max_results=3)
+    return DuckDuckGoJobSearchProvider(max_results=5)
 

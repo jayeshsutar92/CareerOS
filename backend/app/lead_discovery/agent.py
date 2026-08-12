@@ -41,7 +41,8 @@ class LeadDiscoveryAgent(BaseAgent):
         processed_contacts = []
 
         async with AsyncSessionLocal() as session:
-            contact_service = ContactService(session)
+            user_uuid = UUID(user_id) if user_id else None
+            contact_service = ContactService(session, user_id=user_uuid)
             company_service = CompanyService(session)
             company_intel_service = CompanyIntelligenceService(session)
             email_pers_service = EmailPersonalizationService(session)
