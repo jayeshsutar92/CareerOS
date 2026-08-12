@@ -9,6 +9,8 @@ export interface LeadDiscoveryRequest {
 export interface LeadDiscoveryResponse {
   status: string;
   task_id: string | null;
+  error?: string | null;
+  contacts_discovered?: number;
 }
 
 export const leadDiscoveryService = {

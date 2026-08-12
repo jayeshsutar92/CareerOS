@@ -52,16 +52,17 @@ export function LeadDiscoveryForm() {
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
-      await discoverLeads.mutateAsync({
+      const response = await discoverLeads.mutateAsync({
         location: values.location,
         workMode: values.workMode,
         batchSize: values.batchSize,
       });
       toast.success(
-        `Discovery started for ${values.batchSize} leads in ${values.location} (${values.workMode}). Contacts will populate shortly.`
+        `Successfully discovered ${response.contacts_discovered} leads in ${values.location} (${values.workMode}).`
       );
-    } catch {
-      toast.error("Failed to start lead discovery. Please try again.");
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error?.message || error.response?.data?.detail || "Failed to start lead discovery. Please try again.";
+      toast.error(errorMessage);
     }
   };
 

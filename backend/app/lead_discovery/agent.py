@@ -32,9 +32,17 @@ class LeadDiscoveryAgent(BaseAgent):
         search_provider = get_job_search_provider()
         try:
             urls = await search_provider.search_companies(location, work_mode)
+            if not urls:
+                return {
+                    "status": "failed",
+                    "error": "Company URL discovery failed"
+                }
         except Exception as e:
             logger.error(f"Failed to search for companies: {e}")
-            urls = []
+            return {
+                "status": "failed",
+                "error": "Company URL discovery failed"
+            }
 
         total_contacts_discovered = 0
         emails_drafted = 0
