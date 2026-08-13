@@ -54,14 +54,30 @@ class ContactService:
         )
 
     async def discover_now(self, payload: ContactDiscoveryRequest) -> list[Contact]:
+        import asyncio
         fetcher = PublicContactFetcher()
         extractor = PublicContactExtractor()
         stored_contacts: list[Contact] = []
 
         for source_url in payload.source_urls:
-            html = await fetcher.fetch(str(source_url))
+            base_url = str(source_url).rstrip('/')
+            paths = ["", "/about", "/about-us", "/team", "/careers"]
+            
+            async def fetch_path(p):
+                try:
+                    return await fetcher.fetch(base_url + p)
+                except Exception:
+                    return ""
+            
+            # Fetch pages concurrently
+            htmls = await asyncio.gather(*[fetch_path(p) for p in paths])
+            combined_html = "\n".join([h for h in htmls if h])
+            
+            if not combined_html:
+                continue
+
             candidates = await extractor.extract(
-                html,
+                combined_html,
                 source_url=str(source_url),
                 company_name=payload.company_name,
             )
