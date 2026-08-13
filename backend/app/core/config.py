@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="", validation_alias="ANTHROPIC_API_KEY")
     gemini_api_key: str = Field(default="", validation_alias="GEMINI_API_KEY")
     ai_provider: str = Field(default="grok", validation_alias="AI_PROVIDER")
-    ai_model: str = Field(default="grok-2-latest", validation_alias="AI_MODEL")
+    ai_model: str = Field(default="llama-3.3-70b-versatile", validation_alias="AI_MODEL")
     ai_timeout_seconds: float = Field(default=30.0, validation_alias="AI_TIMEOUT_SECONDS")
     ai_max_retries: int = Field(default=2, validation_alias="AI_MAX_RETRIES")
     ai_temperature: float = Field(default=0.2, validation_alias="AI_TEMPERATURE")
