@@ -7,10 +7,5 @@ export function useDiscoverLeads() {
   return useMutation({
     mutationFn: (request: LeadDiscoveryRequest) =>
       leadDiscoveryService.discoverLeads(request),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["scheduled-emails"] });
-      queryClient.invalidateQueries({ queryKey: ["company-intelligence"] });
-    },
   });
 }

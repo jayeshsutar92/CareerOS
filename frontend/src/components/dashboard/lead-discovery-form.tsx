@@ -97,6 +97,8 @@ export function LeadDiscoveryForm() {
                 toast.success(`Successfully discovered ${contactsDiscovered} leads.`);
               }
               queryClient.invalidateQueries({ queryKey: ["contacts"] });
+              queryClient.invalidateQueries({ queryKey: ["scheduled-emails"] });
+              queryClient.invalidateQueries({ queryKey: ["company-intelligence"] });
               setTimeout(() => setPollingStatus(null), 3000);
             }
           } else if (res.status === "failed") {
