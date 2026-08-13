@@ -56,7 +56,7 @@ class RealJobSearchProvider:
                 remotive_url = f"https://remotive.com/api/remote-jobs?category=software-dev&limit={self.max_results * 3}"
                 # If location is provided, we can pass search param
                 if location and location.lower() != "remote":
-                    remotive_url += f"&search={urllib.parse.quote(location)}"
+                    remotive_url += f"&search={urllib.parse.quote(location.lower())}"
                     
                 res = await client.get(remotive_url, timeout=10.0)
                 if res.status_code == 200:

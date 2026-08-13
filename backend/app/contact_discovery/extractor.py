@@ -41,10 +41,22 @@ class PublicContactFetcher:
         self.timeout_seconds = timeout_seconds
 
     async def fetch(self, url: str) -> str:
+        import logging
+        logger = logging.getLogger(__name__)
         async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True, verify=False) as client:
-            response = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
-            response.raise_for_status()
-            return response.text
+            try:
+                response = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
+                if response.status_code == 404:
+                    logger.info(f"Skipping 404 URL: {url}", extra={"action": "fetch_url_404", "url": url})
+                    return ""
+                response.raise_for_status()
+                return response.text
+            except httpx.HTTPStatusError as e:
+                logger.warning(f"HTTP {e.response.status_code} for URL: {url}", extra={"action": "fetch_url_http_error", "url": url, "status": e.response.status_code})
+                return ""
+            except Exception as e:
+                logger.warning(f"Failed to fetch {url}: {e}", extra={"action": "fetch_url_error", "url": url})
+                return ""
 
 
 class PublicContactExtractor:

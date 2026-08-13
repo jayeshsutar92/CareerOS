@@ -23,22 +23,26 @@ class LeadDiscoveryAgent(BaseAgent):
     description = "Orchestrates discovering companies, extracting contacts, and drafting personalized emails."
 
     async def run(self, request: AgentRequest) -> dict[str, Any]:
-        location = request.payload.get("location", "Mumbai")
+        location = request.payload.get("location", "Mumbai").strip().title()
         work_mode = request.payload.get("work_mode", "remote")
         batch_size = request.payload.get("batch_size", 5)
         user_id = request.payload.get("user_id")
 
-        # 1. Search for public company URLs
+        logger.info(
+            "Searching for companies",
+            extra={"action": "search_companies", "normalized_city": location, "work_mode": work_mode}
+        )
         search_provider = get_job_search_provider()
         try:
             urls = await search_provider.search_companies(location, work_mode)
+            logger.info("Company URLs discovered", extra={"action": "urls_discovered", "count": len(urls), "urls": urls})
             if not urls:
                 return {
                     "status": "failed",
                     "error": "Company URL discovery failed"
                 }
         except Exception as e:
-            logger.error(f"Failed to search for companies: {e}")
+            logger.error(f"Failed to search for companies: {e}", extra={"action": "search_failed", "error": str(e)})
             return {
                 "status": "failed",
                 "error": "Company URL discovery failed"
@@ -72,8 +76,14 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 try:
                     contacts = await contact_service.discover_now(discovery_request)
+                    logger.info("Contacts extracted and persisted", extra={
+                        "action": "contacts_persisted",
+                        "company_name": company_name,
+                        "url": url,
+                        "count": len(contacts)
+                    })
                 except Exception as e:
-                    logger.error(f"Failed to discover contacts for {url}: {e}")
+                    logger.error(f"Failed to discover contacts for {url}: {e}", extra={"action": "contact_discovery_failed", "url": url, "error": str(e)})
                     continue
 
                 for contact in contacts:
@@ -116,6 +126,13 @@ class LeadDiscoveryAgent(BaseAgent):
                         processed_contacts.append(str(contact.id))
                     except Exception as e:
                         logger.error(f"Failed to generate email for contact {contact.id}: {e}")
+
+        logger.info("Lead discovery task completed", extra={
+            "action": "lead_discovery_completed",
+            "contacts_discovered": total_contacts_discovered,
+            "emails_drafted": emails_drafted,
+            "processed_contact_ids": processed_contacts
+        })
 
         return {
             "status": "completed",
