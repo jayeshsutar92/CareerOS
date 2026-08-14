@@ -108,20 +108,25 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 try:
                     contacts = await contact_service.discover_now(discovery_request)
-                    if contacts:
-                        discovered_companies.append({
-                            "name": company_name,
-                            "url": url,
-                            "contacts_count": len(contacts)
-                        })
+                    discovered_companies.append({
+                        "name": company_name,
+                        "url": url,
+                        "contacts_count": len(contacts) if contacts else 0
+                    })
                     logger.info("Contacts extracted and persisted", extra={
                         "action": "contacts_persisted",
                         "company_name": company_name,
                         "url": url,
-                        "count": len(contacts)
+                        "count": len(contacts) if contacts else 0
                     })
                 except Exception as e:
                     logger.error(f"Failed to discover contacts for {url}: {e}", extra={"action": "contact_discovery_failed", "url": url, "error": str(e)})
+                    # Still append the company even if discovery fails completely
+                    discovered_companies.append({
+                        "name": company_name,
+                        "url": url,
+                        "contacts_count": 0
+                    })
                     continue
 
                 for contact in contacts:

@@ -131,12 +131,17 @@ export function LeadDiscoveryForm() {
                 setTimeout(() => { if (isMounted.current) setPollingStatus(null); }, 3000);
               } else {
                 const contactsDiscovered = agentOutput?.contacts_discovered || 0;
-                if (contactsDiscovered === 0) {
+                const companiesDiscovered = agentOutput?.discovered_companies?.length || 0;
+                
+                if (companiesDiscovered === 0) {
                   setPollingStatus("no results");
-                  toast.error("No contacts found on discovered domains");
+                  toast.error("No companies found matching criteria");
+                } else if (contactsDiscovered === 0) {
+                  setPollingStatus(`companies found: ${companiesDiscovered}`);
+                  toast.success(`Discovered ${companiesDiscovered} companies, but no contacts found.`);
                 } else if (contactsDiscovered < values.batchSize) {
                   setPollingStatus(`partial results: ${contactsDiscovered} found`);
-                  toast.success(`Partial discovery: ${contactsDiscovered} leads found.`);
+                  toast.success(`Partial discovery: ${contactsDiscovered} leads found across ${companiesDiscovered} companies.`);
                 } else {
                   setPollingStatus(`contacts found: ${contactsDiscovered}`);
                   toast.success(`Successfully discovered ${contactsDiscovered} leads.`);
