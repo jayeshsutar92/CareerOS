@@ -8,7 +8,13 @@ import * as z from "zod";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useDiscoverLeads } from "@/hooks/use-lead-discovery";
-import { leadDiscoveryService } from "@/services/lead-discovery";
+import { contactService } from "@/services/contacts";
+import type { ContactRead } from "@/types/contact";
+import {
+  DiscoveredCompany,
+  getLeadDiscoveryTaskOutput,
+  leadDiscoveryService,
+} from "@/services/lead-discovery";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +44,12 @@ export function LeadDiscoveryForm() {
   const discoverLeads = useDiscoverLeads();
   const queryClient = useQueryClient();
   const [pollingStatus, setPollingStatus] = useState<string | null>(null);
+  const [discoveryResult, setDiscoveryResult] = useState<{
+    location: string;
+    contactsDiscovered: number;
+    companies: DiscoveredCompany[];
+    contacts: ContactRead[];
+  } | null>(null);
 
   const {
     register,
@@ -58,6 +70,7 @@ export function LeadDiscoveryForm() {
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
       setPollingStatus("searching / processing");
+      setDiscoveryResult(null);
       const response = await discoverLeads.mutateAsync({
         location: values.location,
         workMode: values.workMode,
@@ -74,12 +87,11 @@ export function LeadDiscoveryForm() {
       const poll = async () => {
         try {
           const res = await leadDiscoveryService.getTaskStatus(response.task_id!);
-          if (["processing", "queued", "running", "scheduled"].includes(res.status)) {
+          if (res.status !== "succeeded" && res.status !== "failed") {
             setTimeout(poll, 2000);
           } else if (res.status === "succeeded") {
-            // Extract the agent output from the orchestration result
-            const agentOutput = res.result?.results?.[0]?.output || res.result;
-            
+            const agentOutput = getLeadDiscoveryTaskOutput(res.result);
+
             if (agentOutput?.status === "failed") {
               setPollingStatus("search failure");
               toast.error(agentOutput.error || "Company URL discovery failed");
@@ -96,6 +108,34 @@ export function LeadDiscoveryForm() {
                 setPollingStatus(`contacts found: ${contactsDiscovered}`);
                 toast.success(`Successfully discovered ${contactsDiscovered} leads.`);
               }
+
+              const processedContactIds = new Set(agentOutput?.processed_contact_ids || []);
+              let discoveredContacts: ContactRead[] = [];
+
+              // Fetch the contacts persisted by this completed task directly instead
+              // of relying on another component's cache refresh to show the result.
+              if (processedContactIds.size > 0) {
+                try {
+                  const contactsResponse = await contactService.getContacts({
+                    page: 1,
+                    page_size: 100,
+                  });
+                  discoveredContacts = contactsResponse.items.filter((contact) =>
+                    processedContactIds.has(contact.id),
+                  );
+                } catch {
+                  // Keep the task result visible; ContactsTable retains its own
+                  // server-error state if the contacts API is unavailable.
+                }
+              }
+
+              setDiscoveryResult({
+                location: agentOutput?.location || values.location,
+                contactsDiscovered,
+                companies: agentOutput?.discovered_companies || [],
+                contacts: discoveredContacts,
+              });
+
               queryClient.invalidateQueries({ queryKey: ["contacts"] });
               queryClient.invalidateQueries({ queryKey: ["scheduled-emails"] });
               queryClient.invalidateQueries({ queryKey: ["company-intelligence"] });
@@ -106,7 +146,7 @@ export function LeadDiscoveryForm() {
             toast.error(res.error || "Company URL discovery failed");
             setTimeout(() => setPollingStatus(null), 3000);
           }
-        } catch (err: any) {
+        } catch {
           setPollingStatus("search failure");
           toast.error("Failed to check task status.");
           setTimeout(() => setPollingStatus(null), 3000);
@@ -199,6 +239,52 @@ export function LeadDiscoveryForm() {
             )}
           </Button>
         </form>
+
+        {discoveryResult && (
+          <div className="mt-6 space-y-3 border-t border-zinc-800 pt-6">
+            <h4 className="text-sm font-medium text-white">
+              Discovery Results for {discoveryResult.location}
+            </h4>
+            <div className="rounded-md border border-zinc-800 bg-zinc-950/50 p-4">
+              <div className="text-sm text-zinc-400 mb-3">
+                Found {discoveryResult.contactsDiscovered} contacts across {discoveryResult.companies.length} companies.
+              </div>
+              {discoveryResult.companies.length > 0 && (
+                <ul className="space-y-2">
+                  {discoveryResult.companies.map((company, idx) => (
+                    <li key={`${company.url}-${idx}`} className="flex justify-between items-center text-sm">
+                      <div className="flex items-center space-x-2 truncate pr-4">
+                        <span className="text-zinc-300 font-medium truncate">{company.name}</span>
+                        <a href={company.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline text-xs truncate max-w-[150px]">
+                          {company.url}
+                        </a>
+                      </div>
+                      <span className="text-zinc-500 whitespace-nowrap bg-zinc-900 px-2 py-1 rounded text-xs">
+                        {company.contacts_count} contacts
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {discoveryResult.contacts.length > 0 && (
+                <ul className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
+                  {discoveryResult.contacts.map((contact) => (
+                    <li key={contact.id} className="flex justify-between gap-4 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-zinc-200">{contact.name}</p>
+                        <p className="truncate text-zinc-500">{contact.role} · {contact.company_name}</p>
+                      </div>
+                      <span className="shrink-0 text-zinc-500">Contact</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {discoveryResult.companies.length === 0 && discoveryResult.contacts.length === 0 && (
+                <p className="text-sm text-zinc-500">No results found for this discovery.</p>
+              )}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -23,6 +23,7 @@ class LeadDiscoveryAgent(BaseAgent):
     description = "Orchestrates discovering companies, extracting contacts, and drafting personalized emails."
 
     async def run(self, request: AgentRequest) -> dict[str, Any]:
+        discovered_companies = []
         location = request.payload.get("location", "Mumbai").strip().title()
         work_mode = request.payload.get("work_mode", "remote")
         batch_size = request.payload.get("batch_size", 5)
@@ -76,6 +77,12 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 try:
                     contacts = await contact_service.discover_now(discovery_request)
+                    if contacts:
+                        discovered_companies.append({
+                            "name": company_name,
+                            "url": url,
+                            "contacts_count": len(contacts)
+                        })
                     logger.info("Contacts extracted and persisted", extra={
                         "action": "contacts_persisted",
                         "company_name": company_name,
@@ -139,6 +146,8 @@ class LeadDiscoveryAgent(BaseAgent):
             "contacts_discovered": total_contacts_discovered,
             "emails_drafted": emails_drafted,
             "processed_contact_ids": processed_contacts,
+            "discovered_companies": discovered_companies,
+            "location": location,
         }
 
 def register_lead_discovery_agent() -> None:

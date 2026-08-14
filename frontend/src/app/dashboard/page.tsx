@@ -6,7 +6,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { LeadDiscoveryForm } from "@/components/dashboard/lead-discovery-form";
 import { ContactsTable } from "@/components/dashboard/contacts/contacts-table";
-import { ScheduledEmailsTable } from "@/components/dashboard/scheduler/scheduled-emails-table";
 import { useContacts } from "@/hooks/use-contacts";
 import { useScheduledEmails } from "@/hooks/use-scheduler";
 
@@ -77,7 +76,7 @@ export default function DashboardPage() {
           <LeadDiscoveryForm />
         </div>
 
-        {/* Contact Results & Email Queue */}
+        {/* Contact Results */}
         <div className="lg:col-span-2 space-y-8">
           <div className="rounded-lg border border-white/10 bg-zinc-950/50 p-6">
             <div className="mb-4">
@@ -85,14 +84,6 @@ export default function DashboardPage() {
               <p className="text-sm text-zinc-400">Recently discovered HR and recruiter contacts.</p>
             </div>
             <ContactsTable />
-          </div>
-
-          <div className="rounded-lg border border-white/10 bg-zinc-950/50 p-6">
-            <div className="mb-4">
-              <h2 className="text-xl font-semibold text-white">Email Queue</h2>
-              <p className="text-sm text-zinc-400">Track and manage scheduled email deliveries.</p>
-            </div>
-            <ScheduledEmailsTable />
           </div>
         </div>
       </div>
