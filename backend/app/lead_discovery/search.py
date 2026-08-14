@@ -94,7 +94,7 @@ class AISearchProvider:
         
         request = AIRequest(
             messages=[
-                AIMessage(role="system", content="Output valid JSON array of strings only. No markdown formatting like ```json."),
+                AIMessage(role="system", content="Output valid JSON array of strings only. No markdown formatting like ```json.\nExample: [\"https://example.com\", \"https://example2.com\"]"),
                 AIMessage(role="user", content=prompt)
             ],
             temperature=0.7
@@ -104,12 +104,10 @@ class AISearchProvider:
             client = get_ai_client()
             response = await client.complete(request)
             content = response.content.strip()
-            if content.startswith("```"):
-                content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-            
-            # The AI might output ```json \n [ ... ] \n ```
-            if content.startswith("json"):
-                content = content[4:].strip()
+            # Robust JSON extraction to strip markdown blocks
+            content = re.sub(r'^```(?:json)?\s*', '', content)
+            content = re.sub(r'\s*```$', '', content)
+            content = content.strip()
                 
             return json.loads(content)
         except Exception as e:
@@ -117,6 +115,31 @@ class AISearchProvider:
             logging.getLogger(__name__).error(f"AISearchProvider failed: {e}")
             return []
 
+class CombinedJobSearchProvider:
+    def __init__(self, max_results: int = 5):
+        self.max_results = max_results
+        self.real = RealJobSearchProvider(max_results=max_results)
+        self.ai = AISearchProvider(max_results=max_results)
+
+    async def search_companies(self, location: str, work_mode: str) -> list[str]:
+        urls = []
+        try:
+            urls = await self.real.search_companies(location, work_mode)
+        except Exception as e:
+            logging.getLogger(__name__).error(f"RealJobSearchProvider failed in combined: {e}")
+        
+        if len(urls) < self.max_results:
+            try:
+                self.ai.max_results = self.max_results - len(urls)
+                ai_urls = await self.ai.search_companies(location, work_mode)
+                for u in ai_urls:
+                    if u not in urls:
+                        urls.append(u)
+            except Exception as e:
+                logging.getLogger(__name__).error(f"AISearchProvider failed in combined: {e}")
+                
+        return urls[:self.max_results]
+
 def get_job_search_provider() -> JobSearchProvider:
-    return RealJobSearchProvider(max_results=5)
+    return CombinedJobSearchProvider(max_results=5)
 

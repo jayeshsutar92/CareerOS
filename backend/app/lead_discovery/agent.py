@@ -29,9 +29,19 @@ class LeadDiscoveryAgent(BaseAgent):
         batch_size = request.payload.get("batch_size", 5)
         user_id = request.payload.get("user_id")
 
+        if not user_id:
+            logger.error(
+                "Lead discovery called without user_id — aborting to prevent orphan contacts",
+                extra={"action": "missing_user_id", "payload_keys": list(request.payload.keys())},
+            )
+            return {
+                "status": "failed",
+                "error": "user_id is required for lead discovery",
+            }
+
         logger.info(
             "Searching for companies",
-            extra={"action": "search_companies", "normalized_city": location, "work_mode": work_mode}
+            extra={"action": "search_companies", "normalized_city": location, "work_mode": work_mode, "user_id": user_id}
         )
         search_provider = get_job_search_provider()
         try:
@@ -54,15 +64,36 @@ class LeadDiscoveryAgent(BaseAgent):
         processed_contacts = []
 
         async with AsyncSessionLocal() as session:
-            user_uuid = UUID(user_id) if user_id else None
+            user_uuid = UUID(user_id)
+            logger.info(
+                "Creating contact service with user_id",
+                extra={"action": "contact_service_init", "user_id": str(user_uuid)},
+            )
             contact_service = ContactService(session, user_id=user_uuid)
             company_service = CompanyService(session)
             company_intel_service = CompanyIntelligenceService(session)
             email_pers_service = EmailPersonalizationService(session)
 
             for url in urls:
-                if total_contacts_discovered >= batch_size:
+                if len(discovered_companies) >= batch_size:
                     break
+                
+                from app.core.redis import get_redis_client
+                from sqlalchemy import select
+                from app.models.user import User
+                
+                redis = get_redis_client()
+                is_cancelled = await redis.get(f"task:cancel:{request.context.run_id}")
+                if is_cancelled:
+                    logger.info("Lead discovery task cancelled via API", extra={"action": "task_cancelled"})
+                    break
+                
+                expected_token_version = request.context.metadata.get("token_version")
+                if expected_token_version is not None:
+                    user_record = (await session.execute(select(User).where(User.id == user_uuid))).scalar_one_or_none()
+                    if not user_record or user_record.refresh_token_version != expected_token_version:
+                        logger.info("User session invalidated, aborting lead discovery task", extra={"action": "session_invalidated"})
+                        break
                 
                 # Use domain as fallback company name
                 domain = url.split("//")[-1].split("/")[0].replace("www.", "")
@@ -94,8 +125,8 @@ class LeadDiscoveryAgent(BaseAgent):
                     continue
 
                 for contact in contacts:
-                    if total_contacts_discovered >= batch_size:
-                        break
+                    # Let the contact loop run for the discovered company to get all contacts for it, 
+                    # or limit per company if needed. But we don't break early based on total_contacts_discovered.
                     
                     # Ensure company exists and get intelligence
                     company_id = contact.company_id
