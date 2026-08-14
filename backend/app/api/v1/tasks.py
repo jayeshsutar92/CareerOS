@@ -29,3 +29,12 @@ async def get_task_status(
         error=task_result.error,
         result=task_result.result,
     )
+
+@router.post("/{task_id}/cancel", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+) -> None:
+    from app.core.redis import get_redis_client
+    redis = get_redis_client()
+    await redis.set(f"task:cancel:{task_id}", "1", ex=3600)

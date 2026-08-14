@@ -66,5 +66,9 @@ export const leadDiscoveryService = {
   getTaskStatus: async (taskId: string): Promise<TaskStatusResponse> => {
     const { data } = await api.get(`/tasks/${taskId}`);
     return data;
+  },
+
+  cancelTask: async (taskId: string): Promise<void> => {
+    await api.post(`/tasks/${taskId}/cancel`);
   }
 };

@@ -14,6 +14,7 @@ router = APIRouter(prefix="/lead-discovery", tags=["lead-discovery"])
 
 from app.agents.registry import agent_registry
 from app.agents.base import AgentRequest
+from app.agents.context import AgentContext
 
 class LeadDiscoveryResponse(BaseModel):
     status: str
@@ -30,12 +31,22 @@ async def start_lead_discovery(
     settings = get_settings()
     payload.user_id = str(current_user.id)
     
+    from uuid import uuid4
+    task_id = str(uuid4())
+    context = AgentContext(
+        run_id=task_id, 
+        user_id=str(current_user.id), 
+        metadata={"token_version": current_user.refresh_token_version}
+    )
+    
     job = await enqueue_task(
         settings.agent_worker_task_name,
         {
             "agent_name": "lead_discovery",
             "payload": payload.model_dump(),
+            "context": context.model_dump(),
         },
+        task_id=task_id
     )
     
     return LeadDiscoveryResponse(status="queued", task_id=job.id)

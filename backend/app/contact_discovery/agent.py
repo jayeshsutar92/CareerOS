@@ -16,13 +16,25 @@ class ContactDiscoveryAgent(BaseAgent):
     async def run(self, request: AgentRequest) -> dict[str, Any]:
         from uuid import UUID
         user_id_str = request.context.user_id if request.context else None
-        user_id = UUID(user_id_str) if user_id_str else None
+        
+        if not user_id_str:
+            raise ValueError("user_id is required in agent context for contact discovery")
+            
+        user_id = UUID(user_id_str)
 
         payload = ContactDiscoveryRequest.model_validate(
             {**request.payload, "run_in_background": False}
         )
+        
+        run_id = request.context.run_id if request.context else None
+        token_version = request.context.metadata.get("token_version") if request.context else None
+        
         async with AsyncSessionLocal() as session:
-            contacts = await ContactService(session, user_id=user_id).discover_now(payload)
+            contacts = await ContactService(session, user_id=user_id).discover_now(
+                payload, 
+                run_id=run_id, 
+                expected_token_version=token_version
+            )
         return {
             "discovered": len(contacts),
             "stored": len(contacts),

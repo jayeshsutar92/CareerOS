@@ -27,7 +27,7 @@ from app.workers.queue import enqueue_task
 
 
 class ContactService:
-    def __init__(self, session: AsyncSession, user_id: UUID | None = None) -> None:
+    def __init__(self, session: AsyncSession, user_id: UUID) -> None:
         self.session = session
         self.user_id = user_id
         self.repository = ContactRepository(session, user_id)
@@ -35,13 +35,26 @@ class ContactService:
     async def discover(self, payload: ContactDiscoveryRequest) -> ContactDiscoveryResponse:
         if payload.run_in_background:
             settings = get_settings()
+            from uuid import uuid4
+            from sqlalchemy import select
+            from app.models.user import User
+            
+            user = (await self.session.execute(select(User).where(User.id == self.user_id))).scalar_one_or_none()
+            token_version = user.refresh_token_version if user else 0
+            task_id = str(uuid4())
+            
             task = await enqueue_task(
                 settings.agent_worker_task_name,
                 {
                     "agent_name": "contact_discovery",
                     "payload": payload.model_dump(mode="json", exclude={"run_in_background"}),
-                    "context": {"user_id": str(self.user_id)} if self.user_id else None,
+                    "context": {
+                        "user_id": str(self.user_id),
+                        "run_id": task_id,
+                        "metadata": {"token_version": token_version}
+                    },
                 },
+                task_id=task_id
             )
             return ContactDiscoveryResponse(status="queued", task_id=task.id)
 
@@ -53,13 +66,28 @@ class ContactService:
             stored=len(contacts),
         )
 
-    async def discover_now(self, payload: ContactDiscoveryRequest) -> list[Contact]:
+    async def discover_now(self, payload: ContactDiscoveryRequest, run_id: str | None = None, expected_token_version: int | None = None) -> list[Contact]:
         import asyncio
+        from app.core.redis import get_redis_client
+        from sqlalchemy import select
+        from app.models.user import User
+        
         fetcher = PublicContactFetcher()
         extractor = PublicContactExtractor()
         stored_contacts: list[Contact] = []
 
         for source_url in payload.source_urls:
+            if run_id:
+                redis = get_redis_client()
+                is_cancelled = await redis.get(f"task:cancel:{run_id}")
+                if is_cancelled:
+                    break
+                    
+            if expected_token_version is not None:
+                user_record = (await self.session.execute(select(User).where(User.id == self.user_id))).scalar_one_or_none()
+                if not user_record or user_record.refresh_token_version != expected_token_version:
+                    break
+                    
             base_url = str(source_url).rstrip('/')
             paths = ["", "/about", "/about-us", "/team", "/careers"]
             
