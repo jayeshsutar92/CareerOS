@@ -67,54 +67,36 @@ class ContactService:
         )
 
     async def discover_now(self, payload: ContactDiscoveryRequest, run_id: str | None = None, expected_token_version: int | None = None) -> list[Contact]:
-        import asyncio
         from app.core.redis import get_redis_client
         from sqlalchemy import select
         from app.models.user import User
+        from app.contact_discovery.providers import ContactExtractionPipeline
         
-        fetcher = PublicContactFetcher()
-        extractor = PublicContactExtractor()
+        pipeline = ContactExtractionPipeline()
         stored_contacts: list[Contact] = []
 
-        for source_url in payload.source_urls:
-            if run_id:
-                redis = get_redis_client()
-                is_cancelled = await redis.get(f"task:cancel:{run_id}")
-                if is_cancelled:
-                    break
-                    
-            if expected_token_version is not None:
-                user_record = (await self.session.execute(select(User).where(User.id == self.user_id))).scalar_one_or_none()
-                if not user_record or user_record.refresh_token_version != expected_token_version:
-                    break
-                    
-            base_url = str(source_url).rstrip('/')
-            paths = ["", "/about", "/about-us", "/team", "/careers"]
-            
-            async def fetch_path(p):
-                try:
-                    return await fetcher.fetch(base_url + p)
-                except Exception:
-                    return ""
-            
-            # Fetch pages concurrently
-            htmls = await asyncio.gather(*[fetch_path(p) for p in paths])
-            combined_html = "\n".join([h for h in htmls if h])
-            
-            if not combined_html:
-                continue
+        if run_id:
+            redis = get_redis_client()
+            is_cancelled = await redis.get(f"task:cancel:{run_id}")
+            if is_cancelled:
+                return []
+                
+        if expected_token_version is not None:
+            user_record = (await self.session.execute(select(User).where(User.id == self.user_id))).scalar_one_or_none()
+            if not user_record or user_record.refresh_token_version != expected_token_version:
+                return []
 
-            candidates = await extractor.extract(
-                combined_html,
-                source_url=str(source_url),
-                company_name=payload.company_name,
-            )
-            for candidate in candidates:
-                try:
-                    stored_contacts.append(await self.upsert_candidate(candidate, payload.company_id))
-                except HTTPException:
-                    # Skip candidates with unsupported roles (like 'other')
-                    pass
+        candidates = await pipeline.extract_contacts(
+            company_name=payload.company_name,
+            source_urls=[str(u) for u in payload.source_urls]
+        )
+        
+        for candidate in candidates:
+            try:
+                stored_contacts.append(await self.upsert_candidate(candidate, payload.company_id))
+            except HTTPException:
+                # Skip candidates with unsupported roles (like 'other')
+                pass
 
         return stored_contacts
 

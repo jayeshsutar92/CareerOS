@@ -1,145 +1,142 @@
-from typing import Protocol
+import logging
+import re
+from typing import Protocol, Any
+import asyncio
+from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from duckduckgo_search import DDGS
 
-class JobSearchProvider(Protocol):
-    async def search_companies(self, location: str, work_mode: str) -> list[str]:
+logger = logging.getLogger(__name__)
+
+@dataclass
+class CompanyLead:
+    name: str
+    url: str
+    source_score: int
+    source_name: str
+
+class BaseSearchProvider(Protocol):
+    async def search_companies(self, location: str, query: str, max_results: int) -> list[CompanyLead]:
         ...
 
-import urllib.parse
-import httpx
-from bs4 import BeautifulSoup
-import logging
-
-import httpx
-import logging
-import urllib.parse
-import re
-
-class RealJobSearchProvider:
-    def __init__(self, max_results: int = 5):
-        self.max_results = max_results
+class DDGSearchProvider:
+    """Base class for DuckDuckGo based search providers."""
+    def __init__(self):
+        pass
         
-    async def search_companies(self, location: str, work_mode: str) -> list[str]:
-        # Target real job APIs: Jobicy and Remotive
-        urls = []
-        seen_companies = set()
+    async def _safe_search(self, query: str, max_results: int) -> list[dict[str, Any]]:
+        from tenacity import retry, stop_after_attempt, wait_exponential
         
-        async with httpx.AsyncClient() as client:
-            try:
-                # 1. Jobicy API
-                # Fetch remote jobs. Jobicy is mainly remote, so we use it if remote is preferred or as fallback.
-                jobicy_url = "https://jobicy.com/api/v2/remote-jobs?industry=engineering"
-                res = await client.get(jobicy_url, timeout=10.0)
-                if res.status_code == 200:
-                    data = res.json()
-                    for job in data.get("jobs", []):
-                        company_name = job.get("companyName", "")
-                        job_geo = job.get("jobGeo", "").lower()
-                        
-                        # Apply location filtering if needed
-                        if location.lower() != "remote" and location.lower() not in job_geo and "anywhere" not in job_geo:
-                            continue
-                            
-                        if company_name:
-                            clean_name = re.sub(r'[^a-zA-Z0-9]', '', company_name).lower()
-                            if clean_name and clean_name not in seen_companies:
-                                seen_companies.add(clean_name)
-                                urls.append(f"https://www.{clean_name}.com")
-                                if len(urls) >= self.max_results:
-                                    return urls
-            except Exception as e:
-                logging.getLogger(__name__).error(f"Jobicy API failed: {e}")
-
-            try:
-                # 2. Remotive API
-                remotive_url = f"https://remotive.com/api/remote-jobs?category=software-dev&limit={self.max_results * 3}"
-                # If location is provided, we can pass search param
-                if location and location.lower() != "remote":
-                    remotive_url += f"&search={urllib.parse.quote(location.lower())}"
-                    
-                res = await client.get(remotive_url, timeout=10.0)
-                if res.status_code == 200:
-                    data = res.json()
-                    for job in data.get("jobs", []):
-                        company_name = job.get("company_name", "")
-                        if company_name:
-                            clean_name = re.sub(r'[^a-zA-Z0-9]', '', company_name).lower()
-                            if clean_name and clean_name not in seen_companies:
-                                seen_companies.add(clean_name)
-                                urls.append(f"https://www.{clean_name}.com")
-                                if len(urls) >= self.max_results:
-                                    return urls
-            except Exception as e:
-                logging.getLogger(__name__).error(f"Remotive API failed: {e}")
-
-        return urls
-
-class AISearchProvider:
-    def __init__(self, max_results: int = 5):
-        self.max_results = max_results
-
-    async def search_companies(self, location: str, work_mode: str) -> list[str]:
-        import json
-        from app.ai.client import get_ai_client
-        from app.ai.models import AIMessage, AIRequest
-
-        prompt = (
-            f"You are a recruitment assistant. Find {self.max_results} real companies hiring for software engineering roles "
-            f"that are {work_mode} and located in or hiring from {location}. "
-            "Return ONLY a JSON array of their main website URLs. Do not include careers page URLs, just the main domain (e.g. https://www.example.com). "
-            "IMPORTANT: Prioritize very small startups or agencies. Do NOT return large companies like Amazon, Swiggy, Flipkart, Upwork, Google, etc. "
-            "Make sure the companies exist."
-        )
-        
-        request = AIRequest(
-            messages=[
-                AIMessage(role="system", content="Output valid JSON array of strings only. No markdown formatting like ```json.\nExample: [\"https://example.com\", \"https://example2.com\"]"),
-                AIMessage(role="user", content=prompt)
-            ],
-            temperature=0.7
-        )
-        
+        @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+        def do_search():
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=max_results))
+                return results or []
+            
         try:
-            client = get_ai_client()
-            response = await client.complete(request)
-            content = response.content.strip()
-            # Robust JSON extraction to strip markdown blocks
-            content = re.sub(r'^```(?:json)?\s*', '', content)
-            content = re.sub(r'\s*```$', '', content)
-            content = content.strip()
-                
-            return json.loads(content)
+            return await asyncio.to_thread(do_search)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"AISearchProvider failed: {e}")
+            logger.error(f"DDG search failed for query '{query}': {e}")
             return []
 
-class CombinedJobSearchProvider:
-    def __init__(self, max_results: int = 5):
-        self.max_results = max_results
-        self.real = RealJobSearchProvider(max_results=max_results)
-        self.ai = AISearchProvider(max_results=max_results)
-
-    async def search_companies(self, location: str, work_mode: str) -> list[str]:
-        urls = []
-        try:
-            urls = await self.real.search_companies(location, work_mode)
-        except Exception as e:
-            logging.getLogger(__name__).error(f"RealJobSearchProvider failed in combined: {e}")
+class OfficialWebsiteProvider(DDGSearchProvider):
+    async def search_companies(self, location: str, query: str, max_results: int) -> list[CompanyLead]:
+        search_query = f"{query} companies in {location} official site"
+        results = await self._safe_search(search_query, max_results=max_results + 5)
         
-        if len(urls) < self.max_results:
-            try:
-                self.ai.max_results = self.max_results - len(urls)
-                ai_urls = await self.ai.search_companies(location, work_mode)
-                for u in ai_urls:
-                    if u not in urls:
-                        urls.append(u)
-            except Exception as e:
-                logging.getLogger(__name__).error(f"AISearchProvider failed in combined: {e}")
+        leads = []
+        for r in results:
+            url = r.get("href", "")
+            title = r.get("title", "")
+            if not url or "linkedin.com" in url or "naukri.com" in url or "glassdoor.com" in url: 
+                continue
+            
+            # Simple domain extraction
+            domain = urlparse(url).netloc.replace("www.", "")
+            name = domain.split(".")[0].capitalize()
+            # Try to get a better name from title
+            clean_title = re.sub(r'[^a-zA-Z0-9\s-]', '', title).split("-")[0].strip()
+            if clean_title and len(clean_title) < 30:
+                name = clean_title
                 
-        return urls[:self.max_results]
+            leads.append(CompanyLead(name=name, url=url, source_score=100, source_name="Google/DDG: Official Site"))
+            if len(leads) >= max_results:
+                break
+        return leads
 
-def get_job_search_provider() -> JobSearchProvider:
-    return CombinedJobSearchProvider(max_results=5)
+class LinkedInCompanyProvider(DDGSearchProvider):
+    async def search_companies(self, location: str, query: str, max_results: int) -> list[CompanyLead]:
+        search_query = f"site:linkedin.com/company {query} {location}"
+        results = await self._safe_search(search_query, max_results=max_results + 5)
+        
+        leads = []
+        for r in results:
+            url = r.get("href", "")
+            title = r.get("title", "")
+            if not url or "linkedin.com/company" not in url: continue
+            
+            # Title is usually "Company Name | LinkedIn"
+            name = title.split("|")[0].strip()
+            name = re.sub(r'\s*[-\|].*$', '', name) # Strip suffix
+            leads.append(CompanyLead(name=name, url=url, source_score=90, source_name="Google/DDG: LinkedIn"))
+            if len(leads) >= max_results:
+                break
+        return leads
 
+class NaukriProvider(DDGSearchProvider):
+    async def search_companies(self, location: str, query: str, max_results: int) -> list[CompanyLead]:
+        search_query = f"site:naukri.com/job-listings {query} {location}"
+        results = await self._safe_search(search_query, max_results=max_results + 5)
+        
+        leads = []
+        for r in results:
+            url = r.get("href", "")
+            title = r.get("title", "")
+            if not url or "naukri.com" not in url: continue
+            
+            name = title.split("|")[0].strip()
+            name = re.sub(r'\s*[-\|].*$', '', name) # Strip suffix
+            leads.append(CompanyLead(name=name, url=url, source_score=70, source_name="Google/DDG: Naukri"))
+            if len(leads) >= max_results:
+                break
+        return leads
+
+class SearchPipeline:
+    def __init__(self, max_results: int = 10):
+        self.max_results = max_results
+        self.providers: list[BaseSearchProvider] = [
+            OfficialWebsiteProvider(),
+            LinkedInCompanyProvider(),
+            NaukriProvider(),
+        ]
+        
+    async def search_companies(self, location: str, query: str) -> list[CompanyLead]:
+        # Run all providers concurrently
+        tasks = [p.search_companies(location, query, self.max_results) for p in self.providers]
+        results_lists = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        all_leads = []
+        for res in results_lists:
+            if isinstance(res, list):
+                all_leads.extend(res)
+            elif isinstance(res, Exception):
+                logger.error(f"Search provider failed: {res}")
+                
+        # Deduplicate and sort by score
+        seen_names = set()
+        deduped_leads = []
+        
+        # Sort by score first so we keep the highest scored version of a duplicate
+        all_leads.sort(key=lambda x: x.source_score, reverse=True)
+        
+        for lead in all_leads:
+            clean_name = re.sub(r'[^a-zA-Z0-9]', '', lead.name).lower()
+            if clean_name not in seen_names and clean_name:
+                seen_names.add(clean_name)
+                deduped_leads.append(lead)
+                
+        return deduped_leads[:self.max_results]
+
+def get_job_search_provider() -> SearchPipeline:
+    return SearchPipeline(max_results=5)

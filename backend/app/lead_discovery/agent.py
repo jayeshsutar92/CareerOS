@@ -45,18 +45,18 @@ class LeadDiscoveryAgent(BaseAgent):
         )
         search_provider = get_job_search_provider()
         try:
-            urls = await search_provider.search_companies(location, work_mode)
-            logger.info("Company URLs discovered", extra={"action": "urls_discovered", "count": len(urls), "urls": urls})
-            if not urls:
+            leads = await search_provider.search_companies(location, work_mode)
+            logger.info("Company leads discovered", extra={"action": "leads_discovered", "count": len(leads)})
+            if not leads:
                 return {
                     "status": "failed",
-                    "error": "Company URL discovery failed"
+                    "error": "Company lead discovery failed"
                 }
         except Exception as e:
             logger.error(f"Failed to search for companies: {e}", extra={"action": "search_failed", "error": str(e)})
             return {
                 "status": "failed",
-                "error": "Company URL discovery failed"
+                "error": "Company lead discovery failed"
             }
 
         total_contacts_discovered = 0
@@ -74,7 +74,7 @@ class LeadDiscoveryAgent(BaseAgent):
             company_intel_service = CompanyIntelligenceService(session)
             email_pers_service = EmailPersonalizationService(session)
 
-            for url in urls:
+            for lead in leads:
                 if len(discovered_companies) >= batch_size:
                     break
                 
@@ -95,9 +95,8 @@ class LeadDiscoveryAgent(BaseAgent):
                         logger.info("User session invalidated, aborting lead discovery task", extra={"action": "session_invalidated"})
                         break
                 
-                # Use domain as fallback company name
-                domain = url.split("//")[-1].split("/")[0].replace("www.", "")
-                company_name = domain.split(".")[0].capitalize()
+                company_name = lead.name
+                url = lead.url
 
                 # Discover contacts
                 discovery_request = ContactDiscoveryRequest(
