@@ -1,6 +1,8 @@
 import { api } from "./api";
+import { ContactRead } from "../types/contact";
 
 export interface LeadDiscoveryRequest {
+  jobRole?: string;
   location: string;
   workMode: string;
   batchSize: number;
@@ -21,6 +23,8 @@ export interface DiscoveredCompany {
   name: string;
   url: string;
   contacts_count: number;
+  company_score?: number;
+  contacts?: ContactRead[];
 }
 
 export interface LeadDiscoveryTaskOutput {
@@ -54,11 +58,14 @@ export function getLeadDiscoveryTaskOutput(
 export const leadDiscoveryService = {
   discoverLeads: async (request: LeadDiscoveryRequest): Promise<LeadDiscoveryResponse> => {
     // Map to backend schema which is snake_case
-    const payload = {
+    const payload: any = {
       location: request.location,
       work_mode: request.workMode,
       batch_size: request.batchSize,
     };
+    if (request.jobRole && request.jobRole.trim() !== "") {
+      payload.job_role = request.jobRole.trim();
+    }
     const { data } = await api.post("/lead-discovery", payload);
     return data;
   },

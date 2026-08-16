@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/card";
 
 const formSchema = z.object({
+  jobRole: z.string().optional(),
   location: z.string().min(1, "Location is required"),
   workMode: z.string(),
   batchSize: z.coerce.number().min(1).max(50),
@@ -77,6 +78,7 @@ export function LeadDiscoveryForm() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(formSchema as any),
     defaultValues: {
+      jobRole: "",
       location: "Mumbai",
       workMode: "remote",
       batchSize: 5,
@@ -85,7 +87,7 @@ export function LeadDiscoveryForm() {
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
-      setPollingStatus("searching / processing");
+      setPollingStatus("Processing...");
       setDiscoveryResult(null);
       
       // Cancel any existing task
@@ -95,6 +97,7 @@ export function LeadDiscoveryForm() {
       }
       
       const response = await discoverLeads.mutateAsync({
+        jobRole: values.jobRole,
         location: values.location,
         workMode: values.workMode,
         batchSize: values.batchSize,
@@ -102,9 +105,8 @@ export function LeadDiscoveryForm() {
 
       if (!response.task_id) {
         if (isMounted.current) {
-          setPollingStatus("search failure");
+          setPollingStatus(null);
           toast.error("Failed to enqueue task.");
-          setTimeout(() => { if (isMounted.current) setPollingStatus(null); }, 3000);
         }
         return;
       }
@@ -126,24 +128,20 @@ export function LeadDiscoveryForm() {
               const agentOutput = getLeadDiscoveryTaskOutput(res.result);
 
               if (agentOutput?.status === "failed") {
-                setPollingStatus("search failure");
+                setPollingStatus(null);
                 toast.error(agentOutput.error || "Company URL discovery failed");
-                setTimeout(() => { if (isMounted.current) setPollingStatus(null); }, 3000);
               } else {
                 const contactsDiscovered = agentOutput?.contacts_discovered || 0;
                 const companiesDiscovered = agentOutput?.discovered_companies?.length || 0;
                 
                 if (companiesDiscovered === 0) {
-                  setPollingStatus("no results");
+                  setPollingStatus(null);
                   toast.error("No companies found matching criteria");
                 } else if (contactsDiscovered === 0) {
-                  setPollingStatus(`companies found: ${companiesDiscovered}`);
                   toast.success(`Discovered ${companiesDiscovered} companies, but no contacts found.`);
                 } else if (contactsDiscovered < values.batchSize) {
-                  setPollingStatus(`partial results: ${contactsDiscovered} found`);
                   toast.success(`Partial discovery: ${contactsDiscovered} leads found across ${companiesDiscovered} companies.`);
                 } else {
-                  setPollingStatus(`contacts found: ${contactsDiscovered}`);
                   toast.success(`Successfully discovered ${contactsDiscovered} leads.`);
                 }
 
@@ -174,20 +172,18 @@ export function LeadDiscoveryForm() {
                 queryClient.invalidateQueries({ queryKey: ["contacts"] });
                 queryClient.invalidateQueries({ queryKey: ["scheduled-emails"] });
                 queryClient.invalidateQueries({ queryKey: ["company-intelligence"] });
-                setTimeout(() => { if (isMounted.current) setPollingStatus(null); }, 3000);
+                if (isMounted.current) setPollingStatus(null);
               }
             } else if (res.status === "failed") {
-              setPollingStatus("search failure");
+              setPollingStatus(null);
               toast.error(res.error || "Company URL discovery failed");
-              setTimeout(() => { if (isMounted.current) setPollingStatus(null); }, 3000);
             }
           }
         } catch {
           if (!isMounted.current) return;
           activeTaskRef.current = null;
-          setPollingStatus("search failure");
+          setPollingStatus(null);
           toast.error("Failed to check task status.");
-          setTimeout(() => { if (isMounted.current) setPollingStatus(null); }, 3000);
         }
       };
 
@@ -196,10 +192,9 @@ export function LeadDiscoveryForm() {
       
     } catch (error: any) {
       if (!isMounted.current) return;
-      setPollingStatus("search failure");
+      setPollingStatus(null);
       const errorMessage = error.response?.data?.error?.message || error.response?.data?.detail || "Failed to start lead discovery. Please try again.";
       toast.error(errorMessage);
-      setTimeout(() => { if (isMounted.current) setPollingStatus(null); }, 3000);
     }
   };
 
@@ -213,18 +208,35 @@ export function LeadDiscoveryForm() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="location" className="text-zinc-300">
-              Location
-            </Label>
-            <Input
-              id="location"
-              {...register("location")}
-              className="bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-zinc-700"
-            />
-            {errors.location && (
-              <p className="text-sm text-red-400">{errors.location.message}</p>
-            )}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="jobRole" className="text-zinc-300">
+                Job Role (Optional)
+              </Label>
+              <Input
+                id="jobRole"
+                placeholder="e.g. Python Backend Developer"
+                {...register("jobRole")}
+                className="bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-zinc-700"
+              />
+              {errors.jobRole && (
+                <p className="text-sm text-red-400">{errors.jobRole.message}</p>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="location" className="text-zinc-300">
+                Location
+              </Label>
+              <Input
+                id="location"
+                {...register("location")}
+                className="bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-zinc-700"
+              />
+              {errors.location && (
+                <p className="text-sm text-red-400">{errors.location.message}</p>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -291,23 +303,53 @@ export function LeadDiscoveryForm() {
                 Found {discoveryResult.contactsDiscovered} contacts across {discoveryResult.companies.length} companies.
               </div>
               {discoveryResult.companies.length > 0 && (
-                <ul className="space-y-2">
+                <div className="space-y-4">
                   {discoveryResult.companies.map((company, idx) => (
-                    <li key={`${company.url}-${idx}`} className="flex justify-between items-center text-sm">
-                      <div className="flex items-center space-x-2 truncate pr-4">
-                        <span className="text-zinc-300 font-medium truncate">{company.name}</span>
-                        <a href={company.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline text-xs truncate max-w-[150px]">
-                          {company.url}
-                        </a>
+                    <div key={`${company.url}-${idx}`} className="border border-zinc-800/50 rounded p-3 bg-zinc-900/30">
+                      <div className="flex justify-between items-center text-sm mb-2">
+                        <div className="flex flex-col truncate pr-4">
+                          <span className="text-zinc-300 font-medium truncate">{company.name}</span>
+                          <a href={company.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline text-xs truncate max-w-[200px]">
+                            {company.url}
+                          </a>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="text-zinc-500 whitespace-nowrap bg-zinc-900 px-2 py-1 rounded text-xs">
+                            {company.contacts_count} contacts
+                          </span>
+                          {company.company_score !== undefined && (
+                            <span className="text-zinc-600 text-xs font-mono">
+                              Score: {company.company_score}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-zinc-500 whitespace-nowrap bg-zinc-900 px-2 py-1 rounded text-xs">
-                        {company.contacts_count} contacts
-                      </span>
-                    </li>
+                      
+                      {company.contacts && company.contacts.length > 0 && (
+                        <ul className="mt-2 space-y-2 border-t border-zinc-800/50 pt-2">
+                          {company.contacts.map((contact) => (
+                            <li key={contact.id} className="flex justify-between items-center text-xs">
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-zinc-300">{contact.name}</p>
+                                <p className="truncate text-zinc-500">{contact.role}</p>
+                                {contact.source_url && (
+                                  <a href={contact.source_url} target="_blank" rel="noreferrer" className="text-blue-500/70 hover:underline text-[10px] truncate block">
+                                    Source
+                                  </a>
+                                )}
+                              </div>
+                              <span className="shrink-0 text-zinc-600 bg-zinc-950 px-1.5 py-0.5 rounded font-mono text-[10px]">
+                                cf:{contact.confidence_score || 'N/A'}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
-              {discoveryResult.contacts.length > 0 && (
+              {discoveryResult.companies.length === 0 && discoveryResult.contacts.length > 0 && (
                 <ul className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
                   {discoveryResult.contacts.map((contact) => (
                     <li key={contact.id} className="flex justify-between gap-4 text-sm">

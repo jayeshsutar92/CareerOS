@@ -22,6 +22,7 @@ export interface ContactRead {
   contact_methods: ContactMethod[];
   source_url: string;
   notes: string | null;
+  confidence_score?: number;
   created_at: string;
   updated_at: string;
 }
