@@ -44,6 +44,7 @@ class WebsiteExtractorProvider:
                 source_url=str(source_url),
                 company_name=company_name,
             )
+            logger.info("Source analyzed", extra={"action": "source_analyzed", "source": source_url, "candidates_found": len(candidates)})
             all_candidates.extend(candidates)
             
         return all_candidates
@@ -121,6 +122,7 @@ class LinkedInSearchExtractorProvider:
                 ]
             ))
             
+        logger.info("Source analyzed", extra={"action": "source_analyzed", "source": "LinkedIn Search", "candidates_found": len(candidates)})
         return candidates
 
 class ContactExtractionPipeline:

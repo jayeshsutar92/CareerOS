@@ -147,26 +147,24 @@ class LeadDiscoveryAgent(BaseAgent):
                         logger.error(f"Failed to analyze company {company_name}: {e}", extra={"action": "intelligence_failed", "error": str(e)})
 
                 # 3. Discover contacts
-                if False: # PHASE 1 BYPASS: Downstream extraction disabled
-                    discovery_request = ContactDiscoveryRequest(
-                        company_name=company_name,
-                        source_urls=[url],
-                        company_id=company_id,
-                        run_in_background=False,
-                    )
-                    
-                    try:
-                        contacts = await contact_service.discover_now(discovery_request)
-                        logger.info("Contacts extracted and persisted", extra={
-                            "action": "contacts_persisted",
-                            "company_name": company_name,
-                            "url": url,
-                            "count": len(contacts) if contacts else 0
-                        })
-                    except Exception as e:
-                        logger.error(f"Failed to discover contacts for {url}: {e}", extra={"action": "contact_discovery_failed", "url": url, "error": str(e)})
-                        contacts = []
-                else:
+                logger.info("Discovery started", extra={"action": "discovery_started", "company_name": company_name, "company_id": str(company_id)})
+                discovery_request = ContactDiscoveryRequest(
+                    company_name=company_name,
+                    source_urls=[url],
+                    company_id=company_id,
+                    run_in_background=False,
+                )
+                
+                try:
+                    contacts = await contact_service.discover_now(discovery_request)
+                    logger.info("Discovery completed", extra={
+                        "action": "discovery_completed",
+                        "company_name": company_name,
+                        "url": url,
+                        "count": len(contacts) if contacts else 0
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to discover contacts for {url}: {e}", extra={"action": "contact_discovery_failed", "url": url, "error": str(e)})
                     contacts = []
                 
                 discovered_companies.append({

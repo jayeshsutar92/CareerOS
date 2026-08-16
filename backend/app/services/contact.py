@@ -11,6 +11,10 @@ from app.contact_discovery.normalizer import (
     normalize_contact_methods,
     normalize_whitespace,
 )
+import logging
+
+logger = logging.getLogger(__name__)
+
 from app.core.config import get_settings
 from app.models.contact import Contact
 from app.repositories.contact import ContactRepository
@@ -90,6 +94,7 @@ class ContactService:
             company_name=payload.company_name,
             source_urls=[str(u) for u in payload.source_urls]
         )
+        logger.info("Contacts extracted", extra={"action": "contacts_extracted", "count": len(candidates), "company_name": payload.company_name})
         
         for candidate in candidates:
             try:
@@ -119,6 +124,7 @@ class ContactService:
         if existing is not None:
             existing.contact_methods = contact_methods
             existing.source_url = str(candidate.source_url)
+            logger.info("Contacts deduplicated", extra={"action": "contacts_deduplicated", "dedupe_key": dedupe_key})
             return await self.repository.commit_and_refresh(existing)
 
         contact = Contact(
@@ -132,7 +138,9 @@ class ContactService:
             source_url=str(candidate.source_url),
             dedupe_key=dedupe_key,
         )
-        return await self.repository.create(contact)
+        new_contact = await self.repository.create(contact)
+        logger.info("Contacts persisted", extra={"action": "contacts_persisted", "contact_id": str(new_contact.id)})
+        return new_contact
 
     async def list(
         self,
