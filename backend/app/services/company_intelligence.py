@@ -58,12 +58,28 @@ class CompanyIntelligenceService:
         )
 
         try:
+            import httpx
+            from urllib.parse import urlparse
             fetcher = CompanyWebsiteFetcher()
             extractor = CompanyIntelligenceExtractor()
             summarizer = CompanyIntelligenceSummarizer()
 
             # Step 2: Fetch homepage
-            html, headers = await fetcher.fetch_page(url_str)
+            try:
+                html, headers = await fetcher.fetch_page(url_str)
+            except httpx.HTTPStatusError as e:
+                logger.warning(f"Failed to fetch {url_str} due to {e.response.status_code}, attempting fallback", extra={"url": url_str, "status_code": e.response.status_code})
+                parsed = urlparse(url_str)
+                root_url = f"{parsed.scheme}://{parsed.netloc}/"
+                if url_str != root_url:
+                    try:
+                        html, headers = await fetcher.fetch_page(root_url)
+                        logger.info(f"Fallback to root domain {root_url} succeeded", extra={"url": root_url})
+                    except Exception as fallback_exc:
+                        logger.error(f"Fallback to root domain {root_url} also failed: {fallback_exc}", extra={"url": root_url, "error": str(fallback_exc)})
+                        raise e
+                else:
+                    raise e
 
             # Discover About / Careers subpages
             about_url, careers_url = extractor._discover_subpage_urls(
@@ -75,14 +91,18 @@ class CompanyIntelligenceService:
             if about_url:
                 try:
                     about_html, _ = await fetcher.fetch_page(about_url)
+                except httpx.HTTPStatusError as sub_exc:
+                    logger.debug("Failed to fetch discovered about page", extra={"url": about_url, "status_code": sub_exc.response.status_code})
                 except Exception as sub_exc:
-                    logger.debug("Failed to fetch discovered about page", extra={"error": str(sub_exc)})
+                    logger.debug("Failed to fetch discovered about page", extra={"url": about_url, "error": str(sub_exc)})
 
             if careers_url:
                 try:
                     careers_html, _ = await fetcher.fetch_page(careers_url)
+                except httpx.HTTPStatusError as sub_exc:
+                    logger.debug("Failed to fetch discovered careers page", extra={"url": careers_url, "status_code": sub_exc.response.status_code})
                 except Exception as sub_exc:
-                    logger.debug("Failed to fetch discovered careers page", extra={"error": str(sub_exc)})
+                    logger.debug("Failed to fetch discovered careers page", extra={"url": careers_url, "error": str(sub_exc)})
 
             # Step 3: Extract raw content
             raw_content = extractor.extract(
