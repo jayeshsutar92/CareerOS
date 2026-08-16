@@ -81,6 +81,8 @@ class LeadDiscoveryAgent(BaseAgent):
                 from app.core.redis import get_redis_client
                 from sqlalchemy import select
                 from app.models.user import User
+                from app.schemas.company import CompanyCreate
+                from fastapi import HTTPException
                 
                 redis = get_redis_client()
                 is_cancelled = await redis.get(f"task:cancel:{request.context.run_id}")
@@ -98,10 +100,50 @@ class LeadDiscoveryAgent(BaseAgent):
                 company_name = lead.name
                 url = lead.url
 
-                # Discover contacts
+                # 1. Safely get or create Company
+                company_id = None
+                try:
+                    company = await company_service.create(CompanyCreate(name=company_name, website_url=url, description=""))
+                    company_id = company.id
+                    logger.info("Company created successfully", extra={"action": "company_created", "company_name": company_name})
+                except HTTPException as e:
+                    if e.status_code == 409:
+                        # Find existing
+                        logger.info("Company already exists", extra={"action": "company_exists", "company_name": company_name})
+                        try:
+                            company = await company_service.repository.get_by_name(company_name)
+                            if not company:
+                                company = await company_service.repository.get_by_website_url(url)
+                            if company:
+                                company_id = company.id
+                        except Exception:
+                            pass
+                
+                logger.info("Company processed", extra={"action": "company_processed", "company_id": str(company_id) if company_id else None})
+                
+                # 2. Extract Company Intelligence for EVERY discovered company
+                company_intel_id = None
+                if company_id:
+                    try:
+                        intel_req = CompanyIntelligenceRequest(
+                            company_id=company_id,
+                            website_url=url,
+                            company_name=company_name,
+                            run_in_background=False
+                        )
+                        logger.info("Starting company intelligence extraction", extra={"action": "intelligence_queued", "company_id": str(company_id)})
+                        intel_resp = await company_intel_service.analyze(intel_req)
+                        if intel_resp.data:
+                            company_intel_id = intel_resp.data.id
+                        logger.info("Company intelligence crawled and persisted", extra={"action": "intelligence_crawled", "intel_id": str(company_intel_id)})
+                    except Exception as e:
+                        logger.error(f"Failed to analyze company {company_name}: {e}", extra={"action": "intelligence_failed", "error": str(e)})
+
+                # 3. Discover contacts
                 discovery_request = ContactDiscoveryRequest(
                     company_name=company_name,
                     source_urls=[url],
+                    company_id=company_id,
                     run_in_background=False,
                 )
                 
@@ -128,27 +170,8 @@ class LeadDiscoveryAgent(BaseAgent):
                     })
                     continue
 
+                # 4. Email Personalization for extracted contacts
                 for contact in contacts:
-                    # Let the contact loop run for the discovered company to get all contacts for it, 
-                    # or limit per company if needed. But we don't break early based on total_contacts_discovered.
-                    
-                    # Ensure company exists and get intelligence
-                    company_id = contact.company_id
-                    company_intel_id = None
-                    if company_id:
-                        # Ensure intelligence exists
-                        intel_req = CompanyIntelligenceRequest(
-                            company_id=company_id,
-                            source_url=url,
-                            run_in_background=False
-                        )
-                        try:
-                            intel = await company_intel_service.analyze(intel_req)
-                            company_intel_id = intel.id
-                        except Exception as e:
-                            logger.error(f"Failed to analyze company {company_id}: {e}")
-                    
-                    # Generate email draft
                     try:
                         # Template must be robust enough or provided by the UI. Since it's automated, we use a generic placeholder.
                         template = "Hi {name},\n\nI noticed {company_name} is hiring in {location}. {company_insights}\n\nI have experience in this space: {portfolio_links}.\n\nBest,\n[Your Name]"
@@ -166,6 +189,7 @@ class LeadDiscoveryAgent(BaseAgent):
                         emails_drafted += 1
                         total_contacts_discovered += 1
                         processed_contacts.append(str(contact.id))
+                        logger.info("Email drafted for contact", extra={"action": "email_drafted", "contact_id": str(contact.id)})
                     except Exception as e:
                         logger.error(f"Failed to generate email for contact {contact.id}: {e}")
 
