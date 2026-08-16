@@ -17,7 +17,7 @@ class CompanyLead:
     source_name: str
 
 class BaseSearchProvider(Protocol):
-    async def search_companies(self, location: str, query: str, max_results: int) -> list[CompanyLead]:
+    async def search_companies(self, job_role: str | None, location: str, work_mode: str, max_results: int) -> list[CompanyLead]:
         ...
 
 class DDGSearchProvider:
@@ -41,8 +41,11 @@ class DDGSearchProvider:
             return []
 
 class OfficialWebsiteProvider(DDGSearchProvider):
-    async def search_companies(self, location: str, query: str, max_results: int) -> list[CompanyLead]:
-        search_query = f"{query} companies in {location} official site"
+    async def search_companies(self, job_role: str | None, location: str, work_mode: str, max_results: int) -> list[CompanyLead]:
+        job_str = f"{job_role} " if job_role else "companies "
+        search_query = f"{job_str}{work_mode} jobs in {location} official site"
+        logger.info("Querying Official Website Provider", extra={"query": search_query})
+        
         results = await self._safe_search(search_query, max_results=max_results + 5)
         
         leads = []
@@ -63,11 +66,16 @@ class OfficialWebsiteProvider(DDGSearchProvider):
             leads.append(CompanyLead(name=name, url=url, source_score=100, source_name="Google/DDG: Official Site"))
             if len(leads) >= max_results:
                 break
+        
+        logger.info("Official Website Provider finished", extra={"found": len(leads)})
         return leads
 
 class LinkedInCompanyProvider(DDGSearchProvider):
-    async def search_companies(self, location: str, query: str, max_results: int) -> list[CompanyLead]:
-        search_query = f"site:linkedin.com/company {query} {location}"
+    async def search_companies(self, job_role: str | None, location: str, work_mode: str, max_results: int) -> list[CompanyLead]:
+        job_str = f"{job_role} " if job_role else ""
+        search_query = f"site:linkedin.com/company {job_str}{location}"
+        logger.info("Querying LinkedIn Company Provider", extra={"query": search_query})
+        
         results = await self._safe_search(search_query, max_results=max_results + 5)
         
         leads = []
@@ -82,11 +90,16 @@ class LinkedInCompanyProvider(DDGSearchProvider):
             leads.append(CompanyLead(name=name, url=url, source_score=90, source_name="Google/DDG: LinkedIn"))
             if len(leads) >= max_results:
                 break
+                
+        logger.info("LinkedIn Company Provider finished", extra={"found": len(leads)})
         return leads
 
 class NaukriProvider(DDGSearchProvider):
-    async def search_companies(self, location: str, query: str, max_results: int) -> list[CompanyLead]:
-        search_query = f"site:naukri.com/job-listings {query} {location}"
+    async def search_companies(self, job_role: str | None, location: str, work_mode: str, max_results: int) -> list[CompanyLead]:
+        job_str = f"{job_role} " if job_role else ""
+        search_query = f"site:naukri.com/job-listings {job_str}{location}"
+        logger.info("Querying Naukri Provider", extra={"query": search_query})
+        
         results = await self._safe_search(search_query, max_results=max_results + 5)
         
         leads = []
@@ -100,6 +113,8 @@ class NaukriProvider(DDGSearchProvider):
             leads.append(CompanyLead(name=name, url=url, source_score=70, source_name="Google/DDG: Naukri"))
             if len(leads) >= max_results:
                 break
+                
+        logger.info("Naukri Provider finished", extra={"found": len(leads)})
         return leads
 
 class SearchPipeline:
@@ -111,9 +126,12 @@ class SearchPipeline:
             NaukriProvider(),
         ]
         
-    async def search_companies(self, location: str, query: str) -> list[CompanyLead]:
+    async def search_companies(self, job_role: str | None, location: str, work_mode: str, batch_size: int | None = None) -> list[CompanyLead]:
+        limit = batch_size if batch_size is not None else self.max_results
+        logger.info("Starting company search pipeline", extra={"job_role": job_role, "location": location, "work_mode": work_mode, "batch_size": limit})
+        
         # Run all providers concurrently
-        tasks = [p.search_companies(location, query, self.max_results) for p in self.providers]
+        tasks = [p.search_companies(job_role, location, work_mode, limit) for p in self.providers]
         results_lists = await asyncio.gather(*tasks, return_exceptions=True)
         
         all_leads = []
@@ -123,20 +141,36 @@ class SearchPipeline:
             elif isinstance(res, Exception):
                 logger.error(f"Search provider failed: {res}")
                 
-        # Deduplicate and sort by score
-        seen_names = set()
+        # Deduplicate by normalized domain and sort by score
+        def normalize_domain(url: str) -> str:
+            try:
+                domain = urlparse(url).netloc.lower()
+                if domain.startswith("www."):
+                    domain = domain[4:]
+                return domain
+            except Exception:
+                return ""
+                
+        seen_domains = set()
         deduped_leads = []
         
         # Sort by score first so we keep the highest scored version of a duplicate
         all_leads.sort(key=lambda x: x.source_score, reverse=True)
         
         for lead in all_leads:
-            clean_name = re.sub(r'[^a-zA-Z0-9]', '', lead.name).lower()
-            if clean_name not in seen_names and clean_name:
-                seen_names.add(clean_name)
+            domain = normalize_domain(lead.url)
+            if domain and domain not in seen_domains:
+                seen_domains.add(domain)
                 deduped_leads.append(lead)
                 
-        return deduped_leads[:self.max_results]
+        final_leads = deduped_leads[:limit]
+        logger.info("Pipeline finished", extra={
+            "total_discovered": len(all_leads), 
+            "deduplicated": len(deduped_leads), 
+            "returned": len(final_leads)
+        })
+        return final_leads
 
 def get_job_search_provider() -> SearchPipeline:
-    return SearchPipeline(max_results=5)
+    return SearchPipeline()
+

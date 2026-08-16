@@ -24,6 +24,10 @@ class LeadDiscoveryAgent(BaseAgent):
 
     async def run(self, request: AgentRequest) -> dict[str, Any]:
         discovered_companies = []
+        job_role = request.payload.get("job_role")
+        if isinstance(job_role, str):
+            job_role = job_role.strip()
+            
         location = request.payload.get("location", "Mumbai").strip().title()
         work_mode = request.payload.get("work_mode", "remote")
         batch_size = request.payload.get("batch_size", 5)
@@ -41,11 +45,11 @@ class LeadDiscoveryAgent(BaseAgent):
 
         logger.info(
             "Searching for companies",
-            extra={"action": "search_companies", "normalized_city": location, "work_mode": work_mode, "user_id": user_id}
+            extra={"action": "search_companies", "job_role": job_role, "normalized_city": location, "work_mode": work_mode, "user_id": user_id}
         )
         search_provider = get_job_search_provider()
         try:
-            leads = await search_provider.search_companies(location, work_mode)
+            leads = await search_provider.search_companies(job_role, location, work_mode, batch_size)
             logger.info("Company leads discovered", extra={"action": "leads_discovered", "count": len(leads)})
             if not leads:
                 return {
@@ -123,75 +127,75 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 # 2. Extract Company Intelligence for EVERY discovered company
                 company_intel_id = None
-                if company_id:
-                    try:
-                        intel_req = CompanyIntelligenceRequest(
-                            company_id=company_id,
-                            website_url=url,
-                            company_name=company_name,
-                            run_in_background=False
-                        )
-                        logger.info("Starting company intelligence extraction", extra={"action": "intelligence_queued", "company_id": str(company_id)})
-                        intel_resp = await company_intel_service.analyze(intel_req)
-                        if intel_resp.data:
-                            company_intel_id = intel_resp.data.id
-                        logger.info("Company intelligence crawled and persisted", extra={"action": "intelligence_crawled", "intel_id": str(company_intel_id)})
-                    except Exception as e:
-                        logger.error(f"Failed to analyze company {company_name}: {e}", extra={"action": "intelligence_failed", "error": str(e)})
+                if False: # PHASE 1 BYPASS: Downstream extraction disabled
+                    if company_id:
+                        try:
+                            intel_req = CompanyIntelligenceRequest(
+                                company_id=company_id,
+                                website_url=url,
+                                company_name=company_name,
+                                run_in_background=False
+                            )
+                            logger.info("Starting company intelligence extraction", extra={"action": "intelligence_queued", "company_id": str(company_id)})
+                            intel_resp = await company_intel_service.analyze(intel_req)
+                            if intel_resp.data:
+                                company_intel_id = intel_resp.data.id
+                            logger.info("Company intelligence crawled and persisted", extra={"action": "intelligence_crawled", "intel_id": str(company_intel_id)})
+                        except Exception as e:
+                            logger.error(f"Failed to analyze company {company_name}: {e}", extra={"action": "intelligence_failed", "error": str(e)})
 
                 # 3. Discover contacts
-                discovery_request = ContactDiscoveryRequest(
-                    company_name=company_name,
-                    source_urls=[url],
-                    company_id=company_id,
-                    run_in_background=False,
-                )
+                if False: # PHASE 1 BYPASS: Downstream extraction disabled
+                    discovery_request = ContactDiscoveryRequest(
+                        company_name=company_name,
+                        source_urls=[url],
+                        company_id=company_id,
+                        run_in_background=False,
+                    )
+                    
+                    try:
+                        contacts = await contact_service.discover_now(discovery_request)
+                        logger.info("Contacts extracted and persisted", extra={
+                            "action": "contacts_persisted",
+                            "company_name": company_name,
+                            "url": url,
+                            "count": len(contacts) if contacts else 0
+                        })
+                    except Exception as e:
+                        logger.error(f"Failed to discover contacts for {url}: {e}", extra={"action": "contact_discovery_failed", "url": url, "error": str(e)})
+                        contacts = []
+                else:
+                    contacts = []
                 
-                try:
-                    contacts = await contact_service.discover_now(discovery_request)
-                    discovered_companies.append({
-                        "name": company_name,
-                        "url": url,
-                        "contacts_count": len(contacts) if contacts else 0
-                    })
-                    logger.info("Contacts extracted and persisted", extra={
-                        "action": "contacts_persisted",
-                        "company_name": company_name,
-                        "url": url,
-                        "count": len(contacts) if contacts else 0
-                    })
-                except Exception as e:
-                    logger.error(f"Failed to discover contacts for {url}: {e}", extra={"action": "contact_discovery_failed", "url": url, "error": str(e)})
-                    # Still append the company even if discovery fails completely
-                    discovered_companies.append({
-                        "name": company_name,
-                        "url": url,
-                        "contacts_count": 0
-                    })
-                    continue
+                discovered_companies.append({
+                    "name": company_name,
+                    "url": url,
+                    "contacts_count": len(contacts) if contacts else 0
+                })
 
                 # 4. Email Personalization for extracted contacts
-                for contact in contacts:
-                    try:
-                        # Template must be robust enough or provided by the UI. Since it's automated, we use a generic placeholder.
-                        template = "Hi {name},\n\nI noticed {company_name} is hiring in {location}. {company_insights}\n\nI have experience in this space: {portfolio_links}.\n\nBest,\n[Your Name]"
-                        email_req = EmailPersonalizationRequest(
-                            template_content=template,
-                            template_name="Automated Discovery Template",
-                            contact_id=contact.id,
-                            company_intelligence_id=company_intel_id,
-                            user_id=user_id,
-                            save_draft=True,
-                            run_in_background=False,
-                            custom_instructions="Keep it concise and professional. Do not invent a resume link."
-                        )
-                        await email_pers_service.generate(email_req)
-                        emails_drafted += 1
-                        total_contacts_discovered += 1
-                        processed_contacts.append(str(contact.id))
-                        logger.info("Email drafted for contact", extra={"action": "email_drafted", "contact_id": str(contact.id)})
-                    except Exception as e:
-                        logger.error(f"Failed to generate email for contact {contact.id}: {e}")
+                if False: # PHASE 1 BYPASS: Downstream extraction disabled
+                    for contact in contacts:
+                        try:
+                            # Template must be robust enough or provided by the UI. Since it's automated, we use a generic placeholder.
+                            template = "Hi {name},\n\nI noticed {company_name} is hiring in {location}. {company_insights}\n\nI have experience in this space: {portfolio_links}.\n\nBest,\n[Your Name]"
+                            email_req = EmailPersonalizationRequest(
+                                template_content=template,
+                                template_name="Automated Discovery Template",
+                                contact_id=contact.id,
+                                company_intelligence_id=company_intel_id,
+                                user_id=user_id,
+                                save_draft=True,
+                                run_in_background=False,
+                                custom_instructions="Keep it concise and professional. Do not invent a resume link."
+                            )
+                            await email_pers_service.generate(email_req)
+                            emails_drafted += 1
+                            total_contacts_discovered += 1
+                            processed_contacts.append(str(contact.id))
+                            logger.info("Email drafted for contact", extra={"action": "email_drafted", "contact_id": str(contact.id)})
+                        except Exception as e:
+                            logger.error(f"Failed to generate email for contact {contact.id}: {e}")
 
         logger.info("Lead discovery task completed", extra={
             "action": "lead_discovery_completed",
