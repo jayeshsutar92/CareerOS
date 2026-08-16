@@ -167,10 +167,63 @@ class LeadDiscoveryAgent(BaseAgent):
                     logger.error(f"Failed to discover contacts for {url}: {e}", extra={"action": "contact_discovery_failed", "url": url, "error": str(e)})
                     contacts = []
                 
+                company_contacts = []
+                comp_score = 0
+                
+                for contact in contacts:
+                    # Calculate confidence score
+                    confidence = 0
+                    role_cat = contact.role_category
+                    if role_cat in ["hr", "recruiter", "talent_acquisition"]:
+                        confidence += 50
+                    elif role_cat == "hiring_manager":
+                        confidence += 30
+                    else:
+                        confidence += 10
+                    
+                    # Source reliability
+                    if "linkedin.com" in (contact.source_url or ""):
+                        confidence += 20
+                    else:
+                        confidence += 30 # Official website is better
+                    
+                    # Contact methods
+                    methods = []
+                    for cm in (contact.contact_methods or []):
+                        if hasattr(cm, "model_dump"):
+                            methods.append(cm.model_dump())
+                        elif isinstance(cm, dict):
+                            methods.append(cm)
+                            
+                    has_email = any(cm.get("type") == "email" for cm in methods)
+                    if has_email:
+                        confidence += 50
+
+                    confidence = min(confidence, 100)
+                    comp_score += confidence
+                    
+                    company_contacts.append({
+                        "id": str(contact.id),
+                        "name": contact.name,
+                        "role": contact.role,
+                        "role_category": contact.role_category,
+                        "confidence_score": confidence,
+                        "source_url": contact.source_url,
+                        "contact_methods": methods
+                    })
+                    
+                    total_contacts_discovered += 1
+                    processed_contacts.append(str(contact.id))
+                
+                # Sort contacts by confidence
+                company_contacts.sort(key=lambda x: x["confidence_score"], reverse=True)
+
                 discovered_companies.append({
                     "name": company_name,
                     "url": url,
-                    "contacts_count": len(contacts) if contacts else 0
+                    "contacts_count": len(contacts) if contacts else 0,
+                    "contacts": company_contacts,
+                    "company_score": comp_score
                 })
 
                 # 4. Email Personalization for extracted contacts
@@ -191,17 +244,21 @@ class LeadDiscoveryAgent(BaseAgent):
                             )
                             await email_pers_service.generate(email_req)
                             emails_drafted += 1
-                            total_contacts_discovered += 1
-                            processed_contacts.append(str(contact.id))
                             logger.info("Email drafted for contact", extra={"action": "email_drafted", "contact_id": str(contact.id)})
                         except Exception as e:
                             logger.error(f"Failed to generate email for contact {contact.id}: {e}")
+
+        # 5. Phase 4: Result Aggregation and Ranking
+        logger.info("Starting result aggregation and ranking", extra={"action": "aggregation_started"})
+        # Sort companies by company_score (quality and completeness of contacts)
+        discovered_companies.sort(key=lambda x: (x.get("company_score", 0), x.get("contacts_count", 0)), reverse=True)
 
         logger.info("Lead discovery task completed", extra={
             "action": "lead_discovery_completed",
             "contacts_discovered": total_contacts_discovered,
             "emails_drafted": emails_drafted,
-            "processed_contact_ids": processed_contacts
+            "processed_contact_ids": processed_contacts,
+            "total_companies": len(discovered_companies)
         })
 
         return {
