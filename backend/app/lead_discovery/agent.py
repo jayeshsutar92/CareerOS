@@ -103,6 +103,8 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 company_name = lead.name
                 url = lead.url
+                
+                logger.info("Company received", extra={"action": "company_received", "company_name": company_name})
 
                 # 1. Safely get or create Company
                 company_id = None
@@ -123,26 +125,26 @@ class LeadDiscoveryAgent(BaseAgent):
                         except Exception:
                             pass
                 
+                logger.info("Website resolved", extra={"action": "website_resolved", "company_id": str(company_id) if company_id else None, "url": url})
                 logger.info("Company processed", extra={"action": "company_processed", "company_id": str(company_id) if company_id else None})
                 
                 # 2. Extract Company Intelligence for EVERY discovered company
                 company_intel_id = None
-                if False: # PHASE 1 BYPASS: Downstream extraction disabled
-                    if company_id:
-                        try:
-                            intel_req = CompanyIntelligenceRequest(
-                                company_id=company_id,
-                                website_url=url,
-                                company_name=company_name,
-                                run_in_background=False
-                            )
-                            logger.info("Starting company intelligence extraction", extra={"action": "intelligence_queued", "company_id": str(company_id)})
-                            intel_resp = await company_intel_service.analyze(intel_req)
-                            if intel_resp.data:
-                                company_intel_id = intel_resp.data.id
-                            logger.info("Company intelligence crawled and persisted", extra={"action": "intelligence_crawled", "intel_id": str(company_intel_id)})
-                        except Exception as e:
-                            logger.error(f"Failed to analyze company {company_name}: {e}", extra={"action": "intelligence_failed", "error": str(e)})
+                if company_id:
+                    try:
+                        intel_req = CompanyIntelligenceRequest(
+                            company_id=company_id,
+                            website_url=url,
+                            company_name=company_name,
+                            run_in_background=False
+                        )
+                        logger.info("Company Intelligence started", extra={"action": "intelligence_started", "company_id": str(company_id), "website_url": url})
+                        intel_resp = await company_intel_service.analyze(intel_req)
+                        if intel_resp.data:
+                            company_intel_id = intel_resp.data.id
+                        logger.info("Company intelligence crawled and persisted", extra={"action": "intelligence_crawled", "intel_id": str(company_intel_id)})
+                    except Exception as e:
+                        logger.error(f"Failed to analyze company {company_name}: {e}", extra={"action": "intelligence_failed", "error": str(e)})
 
                 # 3. Discover contacts
                 if False: # PHASE 1 BYPASS: Downstream extraction disabled

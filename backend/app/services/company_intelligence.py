@@ -112,11 +112,13 @@ class CompanyIntelligenceService:
                 about_html=about_html,
                 careers_html=careers_html,
             )
+            logger.info("Pages analyzed", extra={"action": "pages_analyzed", "url": url_str, "about_found": bool(about_html), "careers_found": bool(careers_html)})
 
             derived_company_name = company_name or raw_content.get("domain_name") or "Company"
 
             # Step 4: AI Summarization (with rule-based fallback)
             summary_data = await summarizer.summarize(raw_content)
+            logger.info("Enrichment completed", extra={"action": "enrichment_completed", "url": url_str})
 
             # Step 5: Save completed analysis in DB via Repository Upsert
             completed_record = await self.repository.upsert(
@@ -133,6 +135,7 @@ class CompanyIntelligenceService:
                 raw_summary=summary_data.get("summary"),
                 status=IntelligenceStatus.COMPLETED,
             )
+            logger.info("Persistence completed", extra={"action": "persistence_completed", "company_id": str(payload.company_id), "url": url_str})
             return completed_record
 
         except Exception as exc:
