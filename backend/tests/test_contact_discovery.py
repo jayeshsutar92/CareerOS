@@ -83,7 +83,8 @@ async def test_contact_discovery_can_enqueue_background_job(
         return FakeTask()
 
     monkeypatch.setattr("app.services.contact.enqueue_task", fake_enqueue_task)
-    service = ContactService(session=None)  # type: ignore[arg-type]
+    import uuid
+    service = ContactService(session=None, user_id=uuid.uuid4())  # type: ignore[arg-type]
 
     response = await service.discover(
         ContactDiscoveryRequest(

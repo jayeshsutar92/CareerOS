@@ -51,9 +51,9 @@ class TaskPayload:
 class TaskResult:
     task_id: str
     task_name: str
-    user_id: str | None = None
     status: TaskStatus
     attempts: int
+    user_id: str | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
     finished_at: datetime = field(default_factory=lambda: datetime.now(UTC))
