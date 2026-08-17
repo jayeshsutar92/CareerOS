@@ -173,6 +173,7 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 company_contacts = []
                 comp_score = 0
+                best_contact_by_email = {}
                 
                 for contact in contacts:
                     # Calculate confidence score
@@ -186,27 +187,41 @@ class LeadDiscoveryAgent(BaseAgent):
                         confidence += 10
                     
                     # Source reliability
-                    if "linkedin.com" in (contact.source_url or ""):
+                    source_url_lower = (contact.source_url or "").lower()
+                    if "careers" in source_url_lower or "jobs" in source_url_lower:
+                        confidence += 40
+                    elif "contact" in source_url_lower:
+                        confidence += 35
+                    elif "linkedin.com" in source_url_lower:
+                        confidence += 30
+                    elif "naukri.com" in source_url_lower:
                         confidence += 20
+                    elif "indeed.com" in source_url_lower:
+                        confidence += 15
                     else:
-                        confidence += 30 # Official website is better
+                        confidence += 5 # Fallback directory or unknown
                     
                     # Contact methods
                     methods = []
+                    email_address = None
                     for cm in (contact.contact_methods or []):
                         if hasattr(cm, "model_dump"):
-                            methods.append(cm.model_dump())
+                            method_dict = cm.model_dump()
                         elif isinstance(cm, dict):
-                            methods.append(cm)
+                            method_dict = cm
+                        else:
+                            continue
+                        methods.append(method_dict)
+                        if method_dict.get("type") == "email":
+                            email_address = method_dict.get("value")
                             
-                    has_email = any(cm.get("type") == "email" for cm in methods)
+                    has_email = bool(email_address)
                     if has_email:
                         confidence += 50
 
                     confidence = min(confidence, 100)
-                    comp_score += confidence
                     
-                    company_contacts.append({
+                    contact_dict = {
                         "id": str(contact.id),
                         "name": contact.name,
                         "role": contact.role,
@@ -214,10 +229,28 @@ class LeadDiscoveryAgent(BaseAgent):
                         "confidence_score": confidence,
                         "source_url": contact.source_url,
                         "contact_methods": methods
-                    })
+                    }
                     
+                    if has_email and email_address:
+                        email_address = email_address.lower().strip()
+                        if email_address in best_contact_by_email:
+                            existing = best_contact_by_email[email_address]
+                            if confidence > existing["confidence_score"]:
+                                best_contact_by_email[email_address] = contact_dict
+                                logger.info("Contact deduplicated: kept higher confidence", extra={"action": "contact_deduplicated", "email": email_address, "kept_score": confidence, "dropped_score": existing["confidence_score"]})
+                            else:
+                                logger.info("Contact deduplicated: dropped lower confidence", extra={"action": "contact_deduplicated", "email": email_address, "dropped_score": confidence, "kept_score": existing["confidence_score"]})
+                        else:
+                            best_contact_by_email[email_address] = contact_dict
+                    else:
+                        company_contacts.append(contact_dict)
+                        
+                company_contacts.extend(best_contact_by_email.values())
+                
+                for c in company_contacts:
+                    comp_score += c["confidence_score"]
                     total_contacts_discovered += 1
-                    processed_contacts.append(str(contact.id))
+                    processed_contacts.append(c["id"])
                 
                 # Sort contacts by confidence
                 company_contacts.sort(key=lambda x: x["confidence_score"], reverse=True)
@@ -231,26 +264,41 @@ class LeadDiscoveryAgent(BaseAgent):
                 })
 
                 # 4. Email Personalization for extracted contacts
-                if False: # PHASE 1 BYPASS: Downstream extraction disabled
-                    for contact in contacts:
+                import asyncio
+                from app.schemas.email_personalization import EmailPersonalizationRequest
+                
+                sem = asyncio.Semaphore(5)
+                
+                async def generate_draft(contact_dict: dict) -> bool:
+                    if contact_dict["role_category"] not in ["hr", "recruiter", "talent_acquisition", "hiring_manager"]:
+                        return False
+                    
+                    async with sem:
                         try:
-                            # Template must be robust enough or provided by the UI. Since it's automated, we use a generic placeholder.
                             template = "Hi {name},\n\nI noticed {company_name} is hiring in {location}. {company_insights}\n\nI have experience in this space: {portfolio_links}.\n\nBest,\n[Your Name]"
+                            from uuid import UUID
                             email_req = EmailPersonalizationRequest(
                                 template_content=template,
                                 template_name="Automated Discovery Template",
-                                contact_id=contact.id,
+                                contact_id=UUID(contact_dict["id"]),
                                 company_intelligence_id=company_intel_id,
-                                user_id=user_id,
+                                user_id=user_uuid,
                                 save_draft=True,
                                 run_in_background=False,
                                 custom_instructions="Keep it concise and professional. Do not invent a resume link."
                             )
                             await email_pers_service.generate(email_req)
-                            emails_drafted += 1
-                            logger.info("Email drafted for contact", extra={"action": "email_drafted", "contact_id": str(contact.id)})
+                            logger.info("Email drafted for contact", extra={"action": "email_drafted", "contact_id": contact_dict["id"]})
+                            return True
                         except Exception as e:
-                            logger.error(f"Failed to generate email for contact {contact.id}: {e}")
+                            logger.error(f"Failed to generate email for contact {contact_dict['id']}: {e}", extra={"action": "email_draft_failed", "error": str(e)})
+                            return False
+
+                draft_tasks = [generate_draft(c) for c in company_contacts]
+                results = await asyncio.gather(*draft_tasks, return_exceptions=True)
+                for res in results:
+                    if isinstance(res, bool) and res:
+                        emails_drafted += 1
 
         # 5. Phase 4: Result Aggregation and Ranking
         logger.info("Starting result aggregation and ranking", extra={"action": "aggregation_started"})
