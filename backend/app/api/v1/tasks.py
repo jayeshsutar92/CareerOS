@@ -38,3 +38,16 @@ async def cancel_task(
     from app.core.redis import get_redis_client
     redis = get_redis_client()
     await redis.set(f"task:cancel:{current_user.id}:{task_id}", "1", ex=3600)
+
+@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+) -> None:
+    import logging
+    logger = logging.getLogger(__name__)
+    from app.core.redis import get_redis_client
+    redis = get_redis_client()
+    await redis.delete(f"workers:{current_user.id}:result:{task_id}")
+    await redis.delete(f"workers:result:{task_id}")
+    logger.info("Task deleted", extra={"action": "user_deleted_task", "task_id": task_id})

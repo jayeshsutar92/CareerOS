@@ -15,10 +15,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  MailPlus
+  MailPlus,
+  Trash2
 } from "lucide-react";
 import { toast } from "sonner";
-import { useContacts } from "@/hooks/use-contacts";
+import { useContacts, useDeleteContact } from "@/hooks/use-contacts";
 import { ContactRead, ContactRoleCategory } from "@/types/contact";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,8 @@ export function ContactsTable() {
     search: debouncedSearch || undefined,
     role_category: roleCategory === "all" ? undefined : roleCategory,
   });
+
+  const deleteMutation = useDeleteContact();
 
   // Simple debounce for search
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -258,6 +261,20 @@ export function ContactsTable() {
                         title="View Details"
                       >
                         <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-500/70 hover:text-red-400 hover:bg-red-950/30"
+                        onClick={() => {
+                          if (window.confirm("Are you sure you want to delete this contact?")) {
+                            deleteMutation.mutate(contact.id);
+                          }
+                        }}
+                        disabled={deleteMutation.isPending}
+                        title="Delete Contact"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </TableCell>

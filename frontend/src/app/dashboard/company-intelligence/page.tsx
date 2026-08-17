@@ -28,7 +28,7 @@ export default function CompanyIntelligencePage() {
           <CompanyList selectedId={selectedId} onSelect={setSelectedId} />
         </div>
         <div className="lg:col-span-8">
-          <CompanyDetails id={selectedId} />
+          <CompanyDetails id={selectedId} onDeleted={() => setSelectedId(null)} />
         </div>
       </div>
     </div>

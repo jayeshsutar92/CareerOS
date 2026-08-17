@@ -29,6 +29,17 @@ async def get_current_user(
     return await auth_service.get_user_from_token_payload(payload)
 
 
+async def get_current_admin_user(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user doesn't have enough privileges",
+        )
+    return current_user
+
+
 async def enforce_rate_limit(request: Request) -> None:
     identifier = get_rate_limit_identifier(request)
     await check_rate_limit(identifier)

@@ -123,3 +123,31 @@ async def list_scheduled_emails(
         "status": "success",
         "data": [EmailDeliveryStatusRead.model_validate(e) for e in emails]
     }
+
+
+@router.delete(
+    "/{email_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_email(
+    email_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> None:
+    """Delete an email draft."""
+    import logging
+    logger = logging.getLogger(__name__)
+    from app.repositories.email import EmailRepository
+    from sqlalchemy import delete
+    from app.models.email import Email
+    
+    repo = EmailRepository(session)
+    email = await repo.get_by_id(email_id)
+    if not email or email.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Email not found")
+        
+    await session.execute(
+        delete(Email).where(Email.id == email_id, Email.user_id == current_user.id)
+    )
+    await session.commit()
+    logger.info("Email draft deleted", extra={"action": "user_deleted_email", "email_id": str(email_id)})

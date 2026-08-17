@@ -8,10 +8,13 @@ import { cn } from "@/lib/utils";
 import { navigation } from "@/lib/navigation";
 import { useSidebarStore } from "@/store/sidebar";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
+import { ShieldCheck } from "lucide-react";
 
 export function Sidebar() {
   const pathname = usePathname();
   const { isCollapsed, toggle } = useSidebarStore();
+  const { user } = useAuth();
 
   return (
     <aside
@@ -65,6 +68,23 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {user?.is_admin && (
+          <Link
+            href="/dashboard/admin"
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              pathname.startsWith("/dashboard/admin")
+                ? "bg-white/10 text-white"
+                : "text-zinc-400 hover:bg-white/[0.06] hover:text-white",
+              isCollapsed && "justify-center px-2",
+            )}
+            title={isCollapsed ? "Admin Dashboard" : undefined}
+          >
+            <ShieldCheck aria-hidden="true" className="size-4 shrink-0" />
+            {!isCollapsed && <span>Admin Dashboard</span>}
+          </Link>
+        )}
       </nav>
 
       {/* Collapse toggle */}

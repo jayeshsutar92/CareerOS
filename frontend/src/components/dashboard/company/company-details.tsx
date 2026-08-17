@@ -1,8 +1,8 @@
 "use client";
 
-import { Building2, Code, Globe, Loader2, Mail, RefreshCw, Briefcase, FileText, AlertTriangle } from "lucide-react";
+import { Building2, Code, Globe, Loader2, Mail, RefreshCw, Briefcase, FileText, AlertTriangle, Trash2 } from "lucide-react";
 import { format } from "date-fns";
-import { useCompanyIntelligence, useRefreshCompanyIntelligence } from "@/hooks/use-company";
+import { useCompanyIntelligence, useRefreshCompanyIntelligence, useDeleteCompanyIntelligence } from "@/hooks/use-company";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,13 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 
 interface CompanyDetailsProps {
   id: string | null;
+  onDeleted?: () => void;
 }
 
-export function CompanyDetails({ id }: CompanyDetailsProps) {
+export function CompanyDetails({ id, onDeleted }: CompanyDetailsProps) {
   const { data, isLoading, isError, isRefetching } = useCompanyIntelligence(id ?? "");
   const refreshMutation = useRefreshCompanyIntelligence();
+  const deleteMutation = useDeleteCompanyIntelligence();
 
   if (!id) {
     return (
@@ -102,16 +104,36 @@ export function CompanyDetails({ id }: CompanyDetailsProps) {
               </span>
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isProcessing || refreshMutation.isPending || isRefetching}
-            onClick={() => refreshMutation.mutate(data.id)}
-            className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:text-white hover:bg-zinc-800"
-          >
-            <RefreshCw className={`mr-2 h-3 w-3 ${(refreshMutation.isPending || isProcessing || isRefetching) ? "animate-spin" : ""}`} />
-            Refresh Data
-          </Button>
+          <div className="flex gap-2 items-center">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isProcessing || refreshMutation.isPending || isRefetching || deleteMutation.isPending}
+              onClick={() => {
+                if (window.confirm("Are you sure you want to delete this company? This will also delete any discovered contacts and email drafts associated with it.")) {
+                  deleteMutation.mutate(data.id, {
+                    onSuccess: () => {
+                      if (onDeleted) onDeleted();
+                    }
+                  });
+                }
+              }}
+              className="border-red-900 bg-red-950/20 text-red-500 hover:text-red-400 hover:bg-red-900/30"
+            >
+              <Trash2 className="mr-2 h-3 w-3" />
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isProcessing || refreshMutation.isPending || isRefetching || deleteMutation.isPending}
+              onClick={() => refreshMutation.mutate(data.id)}
+              className="border-zinc-800 bg-zinc-900 text-zinc-300 hover:text-white hover:bg-zinc-800"
+            >
+              <RefreshCw className={`mr-2 h-3 w-3 ${(refreshMutation.isPending || isProcessing || isRefetching) ? "animate-spin" : ""}`} />
+              Refresh Data
+            </Button>
+          </div>
         </div>
       </CardHeader>
 

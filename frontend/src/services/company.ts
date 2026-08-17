@@ -43,4 +43,8 @@ export const companyService = {
     );
     return data;
   },
+
+  async deleteCompanyIntelligence(id: string): Promise<void> {
+    await api.delete(`/company-intelligence/${id}`);
+  },
 };

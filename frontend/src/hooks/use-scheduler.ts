@@ -59,3 +59,14 @@ export function useCancelEmail() {
     },
   });
 }
+
+export function useDeleteEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (emailId: string) => schedulerService.deleteEmail(emailId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scheduled-emails"] });
+    },
+  });
+}

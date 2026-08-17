@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { Play, XCircle, RefreshCw, AlertCircle, Clock, Search, Filter } from "lucide-react";
+import { Play, XCircle, RefreshCw, AlertCircle, Clock, Search, Filter, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useScheduledEmails, useCancelEmail, useScheduleEmail } from "@/hooks/use-scheduler";
+import { useScheduledEmails, useCancelEmail, useScheduleEmail, useDeleteEmail } from "@/hooks/use-scheduler";
 import { EmailDeliveryStatusRead } from "@/types/scheduler";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -33,13 +33,14 @@ export function ScheduledEmailsTable() {
   const { data, isLoading, isError, refetch } = useScheduledEmails();
   const cancelEmail = useCancelEmail();
   const scheduleEmail = useScheduleEmail();
+  const deleteEmail = useDeleteEmail();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
-  const [confirmState, setConfirmState] = useState<{ open: boolean; type: "cancel" | "retry" | null; id: string | null }>({
+  const [confirmState, setConfirmState] = useState<{ open: boolean; type: "cancel" | "retry" | "delete" | null; id: string | null }>({
     open: false,
     type: null,
     id: null,
@@ -247,6 +248,19 @@ export function ScheduledEmailsTable() {
                           {email.status === "draft" ? "Send Now" : "Retry"}
                         </Button>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-zinc-400 hover:text-red-500"
+                        onClick={() => {
+                          if (window.confirm("Are you sure you want to delete this email draft?")) {
+                            deleteEmail.mutate(email.id);
+                          }
+                        }}
+                        disabled={deleteEmail.isPending}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>

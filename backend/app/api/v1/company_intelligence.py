@@ -67,3 +67,13 @@ async def refresh_company_intelligence(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> CompanyIntelligenceResponse:
     return await CompanyIntelligenceService(session).refresh(intelligence_id)
+
+
+@router.delete("/{intelligence_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_company_intelligence(
+    intelligence_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: User = Depends(get_current_user),
+) -> None:
+    await CompanyIntelligenceService(session).delete_for_user(intelligence_id, current_user.id)
+

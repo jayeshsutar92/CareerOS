@@ -176,3 +176,13 @@ class ContactService:
         if contact is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
         return contact
+
+    async def delete(self, contact_id: UUID) -> None:
+        from sqlalchemy import delete
+        from app.models.contact import Contact
+        contact = await self.get(contact_id)
+        await self.repository.session.execute(
+            delete(Contact).where(Contact.id == contact_id, Contact.user_id == self.user_id)
+        )
+        await self.repository.session.commit()
+        logger.info("Contact deleted", extra={"action": "user_deleted_contact", "contact_id": str(contact_id)})

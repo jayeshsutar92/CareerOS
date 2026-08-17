@@ -83,3 +83,13 @@ async def get_contact(
 ) -> ContactRead:
     contact = await ContactService(session, current_user.id).get(contact_id)
     return ContactRead.model_validate(contact)
+
+
+@router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_contact(
+    contact_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> None:
+    await ContactService(session, current_user.id).delete(contact_id)
+

@@ -198,5 +198,33 @@ class CompanyIntelligenceService:
             pages=ceil(total / page_size) if total else 0,
         )
 
+    async def delete_for_user(self, intelligence_id: UUID, user_id: UUID) -> None:
+        from sqlalchemy import delete
+        from app.models.contact import Contact
+        from app.models.email import Email
+        from app.models.company_intelligence import CompanyIntelligence
+        
+        record = await self.get(intelligence_id)
+        
+        if record.company_id:
+            # Delete associated emails for this user and company
+            await self.repository.session.execute(
+                delete(Email).where(Email.user_id == user_id, Email.company_id == record.company_id)
+            )
+            # Delete associated contacts for this user and company
+            await self.repository.session.execute(
+                delete(Contact).where(Contact.user_id == user_id, Contact.company_id == record.company_id)
+            )
+            
+        # Delete the intelligence record
+        await self.repository.session.execute(
+            delete(CompanyIntelligence).where(CompanyIntelligence.id == intelligence_id)
+        )
+        await self.repository.session.commit()
+        logger.info("Company Intelligence and related user data deleted", extra={
+            "action": "user_deleted_company",
+            "intelligence_id": str(intelligence_id),
+            "user_id": str(user_id)
+        })
 
 from bs4 import BeautifulSoup  # Imported for discovery helper in analyze_now

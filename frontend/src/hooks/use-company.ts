@@ -50,3 +50,14 @@ export function useRefreshCompanyIntelligence() {
     },
   });
 }
+
+export function useDeleteCompanyIntelligence() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => companyService.deleteCompanyIntelligence(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["company-intelligence"] });
+    },
+  });
+}

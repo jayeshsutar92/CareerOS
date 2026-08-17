@@ -41,4 +41,9 @@ export const schedulerService = {
     );
     return data;
   },
+
+  /** Delete an email */
+  async deleteEmail(emailId: string): Promise<void> {
+    await api.delete(`/emails/${emailId}`);
+  },
 };
