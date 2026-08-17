@@ -12,6 +12,9 @@ from app.core.config import get_settings
 
 router = APIRouter(prefix="/lead-discovery", tags=["lead-discovery"])
 
+import logging
+logger = logging.getLogger(__name__)
+
 from app.agents.registry import agent_registry
 from app.agents.base import AgentRequest
 from app.agents.context import AgentContext
@@ -29,15 +32,39 @@ async def start_lead_discovery(
     current_user: User = Depends(get_current_user),
 ) -> LeadDiscoveryResponse:
     settings = get_settings()
-    payload.user_id = str(current_user.id)
+    user_id_str = str(current_user.id)
+    payload.user_id = user_id_str
     
+    from app.core.redis import get_redis_client
+    redis = get_redis_client()
+    
+    # Check for active task
+    active_task_key = f"active_discovery:{user_id_str}"
+    old_task_id = await redis.get(active_task_key)
+    
+    if old_task_id:
+        old_task_id_str = old_task_id.decode() if isinstance(old_task_id, bytes) else old_task_id
+        # Cancel the old task gracefully
+        await redis.set(f"task:cancel:{user_id_str}:{old_task_id_str}", "1", ex=3600)
+        logger.info("Automatically cancelled previous orphaned discovery task", extra={
+            "user_id": user_id_str,
+            "cancelled_task_id": old_task_id_str
+        })
+        
     from uuid import uuid4
     task_id = str(uuid4())
     context = AgentContext(
         run_id=task_id, 
-        user_id=str(current_user.id), 
+        user_id=user_id_str, 
         metadata={"token_version": current_user.refresh_token_version}
     )
+    
+    # Register new active task
+    await redis.set(active_task_key, task_id, ex=86400)
+    logger.info("Registered new active discovery task", extra={
+        "user_id": user_id_str,
+        "active_task_id": task_id
+    })
     
     job = await enqueue_task(
         settings.agent_worker_task_name,
@@ -47,7 +74,7 @@ async def start_lead_discovery(
             "context": context.model_dump(),
         },
         task_id=task_id,
-        user_id=str(current_user.id)
+        user_id=user_id_str
     )
     
     return LeadDiscoveryResponse(status="queued", task_id=job.id)

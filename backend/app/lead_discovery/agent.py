@@ -92,6 +92,10 @@ class LeadDiscoveryAgent(BaseAgent):
                 is_cancelled = await redis.get(f"task:cancel:{request.context.user_id}:{request.context.run_id}")
                 if is_cancelled:
                     logger.info("Lead discovery task cancelled via API", extra={"action": "task_cancelled"})
+                    active_task = await redis.get(f"active_discovery:{request.context.user_id}")
+                    if active_task and active_task.decode() == request.context.run_id:
+                        await redis.delete(f"active_discovery:{request.context.user_id}")
+                        logger.info("Cleared active discovery task tracker on cancel", extra={"action": "tracker_cleared_cancel"})
                     break
                 
                 expected_token_version = request.context.metadata.get("token_version")
@@ -260,6 +264,14 @@ class LeadDiscoveryAgent(BaseAgent):
             "processed_contact_ids": processed_contacts,
             "total_companies": len(discovered_companies)
         })
+
+        # Clear active task if it is us
+        from app.core.redis import get_redis_client
+        redis = get_redis_client()
+        active_task = await redis.get(f"active_discovery:{user_id}")
+        if active_task and active_task.decode() == request.context.run_id:
+            await redis.delete(f"active_discovery:{user_id}")
+            logger.info("Cleared active discovery task tracker", extra={"action": "tracker_cleared"})
 
         return {
             "status": "completed",
