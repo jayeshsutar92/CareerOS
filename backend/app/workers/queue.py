@@ -20,7 +20,9 @@ def _scheduled_key(queue_name: str | None = None) -> str:
     return build_redis_key("workers", queue_name or settings.worker_queue_name, "scheduled")
 
 
-def _result_key(task_id: str) -> str:
+def _result_key(task_id: str, user_id: str | None = None) -> str:
+    if user_id:
+        return build_redis_key("workers", user_id, "result", task_id)
     return build_redis_key("workers", "result", task_id)
 
 
@@ -34,6 +36,7 @@ async def enqueue_task(
     args: dict[str, Any] | None = None,
     *,
     task_id: str | None = None,
+    user_id: str | None = None,
     queue_name: str | None = None,
     delay_seconds: int = 0,
     max_retries: int | None = None,
@@ -43,6 +46,7 @@ async def enqueue_task(
         id=task_id or str(uuid4()),
         name=name,
         args=args or {},
+        user_id=user_id,
         max_retries=max_retries,
         run_at=run_at,
     )
@@ -92,6 +96,7 @@ async def schedule_retry(
         id=payload.id,
         name=payload.name,
         args=payload.args,
+        user_id=payload.user_id,
         attempt=payload.attempt + 1,
         max_retries=payload.max_retries,
         run_at=datetime.now(UTC) + timedelta(seconds=delay_seconds),
@@ -107,11 +112,11 @@ async def schedule_retry(
 async def store_task_result(result: TaskResult, ttl_seconds: int | None = None) -> None:
     settings = get_settings()
     ttl = ttl_seconds if ttl_seconds is not None else settings.worker_result_ttl_seconds
-    await get_redis_client().set(_result_key(result.task_id), result.to_json(), ex=ttl)
+    await get_redis_client().set(_result_key(result.task_id, result.user_id), result.to_json(), ex=ttl)
 
 
-async def get_task_result(task_id: str) -> TaskResult | None:
-    value = await get_redis_client().get(_result_key(task_id))
+async def get_task_result(task_id: str, user_id: str | None = None) -> TaskResult | None:
+    value = await get_redis_client().get(_result_key(task_id, user_id))
     return TaskResult.from_json(value) if value else None
 
 

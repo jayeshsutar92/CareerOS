@@ -89,7 +89,7 @@ class LeadDiscoveryAgent(BaseAgent):
                 from fastapi import HTTPException
                 
                 redis = get_redis_client()
-                is_cancelled = await redis.get(f"task:cancel:{request.context.run_id}")
+                is_cancelled = await redis.get(f"task:cancel:{request.context.user_id}:{request.context.run_id}")
                 if is_cancelled:
                     logger.info("Lead discovery task cancelled via API", extra={"action": "task_cancelled"})
                     break

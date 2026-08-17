@@ -19,7 +19,7 @@ async def get_task_status(
     task_id: str,
     current_user: User = Depends(get_current_user),
 ) -> TaskStatusResponse:
-    task_result = await get_task_result(task_id)
+    task_result = await get_task_result(task_id, str(current_user.id))
     
     if not task_result:
         return TaskStatusResponse(status="processing")
@@ -37,4 +37,4 @@ async def cancel_task(
 ) -> None:
     from app.core.redis import get_redis_client
     redis = get_redis_client()
-    await redis.set(f"task:cancel:{task_id}", "1", ex=3600)
+    await redis.set(f"task:cancel:{current_user.id}:{task_id}", "1", ex=3600)

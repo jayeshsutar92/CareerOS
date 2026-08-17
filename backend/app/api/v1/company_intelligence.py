@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.api.deps import get_current_user
+from app.models.user import User
 from app.schemas.company_intelligence import (
     CompanyIntelligenceListResponse,
     CompanyIntelligenceRead,
@@ -24,8 +26,9 @@ router = APIRouter(prefix="/company-intelligence", tags=["company-intelligence"]
 async def analyze_company(
     payload: CompanyIntelligenceRequest,
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: User = Depends(get_current_user),
 ) -> CompanyIntelligenceResponse:
-    return await CompanyIntelligenceService(session).analyze(payload)
+    return await CompanyIntelligenceService(session).analyze(payload, user_id=current_user.id)
 
 
 @router.get("", response_model=CompanyIntelligenceListResponse)

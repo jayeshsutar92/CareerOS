@@ -46,7 +46,8 @@ async def start_lead_discovery(
             "payload": payload.model_dump(),
             "context": context.model_dump(),
         },
-        task_id=task_id
+        task_id=task_id,
+        user_id=str(current_user.id)
     )
     
     return LeadDiscoveryResponse(status="queued", task_id=job.id)

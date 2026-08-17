@@ -41,6 +41,7 @@ class EmailPersonalizationService:
                     "agent_name": "email_personalization",
                     "payload": payload.model_dump(mode="json", exclude={"run_in_background"}),
                 },
+                user_id=str(payload.user_id) if payload.user_id else None
             )
             return EmailPersonalizationResponse(status="queued", task_id=task.id)
 

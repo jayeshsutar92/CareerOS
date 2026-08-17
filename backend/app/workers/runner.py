@@ -79,6 +79,7 @@ class WorkerRunner:
             TaskResult(
                 task_id=payload.id,
                 task_name=payload.name,
+                user_id=payload.user_id,
                 status=TaskStatus.SUCCEEDED,
                 attempts=payload.attempt + 1,
                 result=result,
@@ -107,6 +108,7 @@ class WorkerRunner:
                 TaskResult(
                     task_id=payload.id,
                     task_name=payload.name,
+                    user_id=payload.user_id,
                     status=TaskStatus.RETRYING,
                     attempts=retry_payload.attempt,
                     error=error,
@@ -127,6 +129,7 @@ class WorkerRunner:
             TaskResult(
                 task_id=payload.id,
                 task_name=payload.name,
+                user_id=payload.user_id,
                 status=TaskStatus.FAILED,
                 attempts=payload.attempt + 1,
                 error=error,

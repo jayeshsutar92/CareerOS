@@ -85,6 +85,7 @@ class EmailDeliveryService:
             },
             delay_seconds=delay_seconds,
             task_id=f"email-delivery-{email_id}",
+            user_id=str(email.user_id) if email.user_id else None
         )
 
         email = await self.repo.update_email(email, task_id=task_payload.id)

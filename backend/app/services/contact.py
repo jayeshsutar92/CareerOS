@@ -58,7 +58,8 @@ class ContactService:
                         "metadata": {"token_version": token_version}
                     },
                 },
-                task_id=task_id
+                task_id=task_id,
+                user_id=str(self.user_id)
             )
             return ContactDiscoveryResponse(status="queued", task_id=task.id)
 
@@ -81,7 +82,7 @@ class ContactService:
 
         if run_id:
             redis = get_redis_client()
-            is_cancelled = await redis.get(f"task:cancel:{run_id}")
+            is_cancelled = await redis.get(f"task:cancel:{self.user_id}:{run_id}")
             if is_cancelled:
                 return []
                 

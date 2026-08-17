@@ -23,6 +23,7 @@ class TaskPayload:
     name: str
     args: dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=lambda: str(uuid4()))
+    user_id: str | None = None
     attempt: int = 0
     max_retries: int | None = None
     run_at: datetime | None = None
@@ -50,6 +51,7 @@ class TaskPayload:
 class TaskResult:
     task_id: str
     task_name: str
+    user_id: str | None = None
     status: TaskStatus
     attempts: int
     result: dict[str, Any] | None = None

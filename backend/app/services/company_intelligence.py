@@ -27,7 +27,7 @@ class CompanyIntelligenceService:
     def __init__(self, session: AsyncSession) -> None:
         self.repository = CompanyIntelligenceRepository(session)
 
-    async def analyze(self, payload: CompanyIntelligenceRequest) -> CompanyIntelligenceResponse:
+    async def analyze(self, payload: CompanyIntelligenceRequest, user_id: UUID | None = None) -> CompanyIntelligenceResponse:
         if payload.run_in_background:
             settings = get_settings()
             task = await enqueue_task(
@@ -36,6 +36,7 @@ class CompanyIntelligenceService:
                     "agent_name": "company_intelligence",
                     "payload": payload.model_dump(mode="json", exclude={"run_in_background"}),
                 },
+                user_id=str(user_id) if user_id else None
             )
             return CompanyIntelligenceResponse(status="queued", task_id=task.id)
 
