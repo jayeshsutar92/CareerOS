@@ -148,3 +148,8 @@ sample.txt
 backend/test_lead_agent.py
 final.txt
 final1.txt
+
+# ------------------------------------------
+# AI Customizations
+# ------------------------------------------
+.agents/
