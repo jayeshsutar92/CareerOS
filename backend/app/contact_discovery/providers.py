@@ -24,7 +24,7 @@ class WebsiteExtractorProvider:
         all_candidates = []
         for source_url in source_urls:
             base_url = str(source_url).rstrip('/')
-            paths = ["", "/about", "/about-us", "/team", "/careers"]
+            paths = ["/careers", "/jobs", "/contact", "/contact-us", "", "/about", "/about-us", "/team"]
             
             async def fetch_path(p):
                 try:
@@ -34,7 +34,7 @@ class WebsiteExtractorProvider:
             
             # Fetch pages concurrently
             htmls = await asyncio.gather(*[fetch_path(p) for p in paths])
-            combined_html = "\\n".join([h for h in htmls if h])
+            combined_html = "\n".join([h for h in htmls if h])
             
             if not combined_html:
                 continue
@@ -144,4 +144,13 @@ class ContactExtractionPipeline:
                 logger.error(f"Contact extraction provider failed: {res}")
                 
         # Deduplication happens later in ContactService.upsert_candidate but we can do basic dedupe here
+        logger.info(
+            "Contact extraction pipeline completed",
+            extra={
+                "action": "pipeline_complete",
+                "company_name": company_name,
+                "total_candidates": len(all_candidates),
+                "provider_count": len(self.providers),
+            },
+        )
         return all_candidates

@@ -17,7 +17,7 @@ from app.schemas.contact import ContactCandidate, ContactMethod
 logger = logging.getLogger(__name__)
 
 GENERIC_EMAIL_RE = re.compile(
-    r"^(info|sales|careers|hello|contact|support|hr|jobs|admin|press|marketing|team)@", re.I
+    r"^(info|sales|hello|contact|support|admin|press|marketing|team)@", re.I
 )
 
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
@@ -175,47 +175,22 @@ class PublicContactExtractor:
 
         candidates = await self._map_methods_to_candidates(candidates, filtered_methods)
 
-        # SMTP verification removed – accept all extracted email candidates without SMTP checks.
-        domain = urllib.parse.urlparse(source_url).netloc.replace("www.", "")
+        deduped = self._dedupe_candidates(candidates)
         logger.info(
-            "SMTP verification disabled – processing email candidates without verification",
-            extra={
-                "action": "smtp_verification_skipped",
-                "source_url": source_url,
-                "domain": domain,
-                "candidate_count": len(candidates),
-            },
-        )
-        # Optionally generate generic department contacts without verification.
-        generic_roles = [
-            ("HR", f"hr@{domain}"),
-            ("Talent Acquisition", f"talent@{domain}"),
-            ("Recruiter", f"careers@{domain}"),
-            ("Recruiter", f"recruiting@{domain}"),
-        ]
-        verified_candidates = [
-            ContactCandidate(
-                name=f"{company_name} {role_name}",
-                role=role_name,
-                company_name=company_name,
-                source_url=source_url,
-                contact_methods=[ContactMethod(type="email", value=email)],
-            )
-            for role_name, email in generic_roles
-        ]
-        # No SMTP verification performed; all extracted candidates are considered valid.
-        all_candidates = candidates + verified_candidates
-        logger.info(
-            "Extraction pipeline completed (SMTP verification omitted)",
+            "Contact extraction pipeline completed",
             extra={
                 "action": "extraction_complete",
                 "source_url": source_url,
-                "total_candidates": len(all_candidates),
-                "from_extraction": len(candidates),
-                "from_smtp_verification": 0,
+                "company_name": company_name,
+                "raw_candidates": len(candidates),
+                "after_dedup": len(deduped),
+                "candidates_with_email": sum(
+                    1 for c in deduped
+                    if any(m.type == "email" for m in c.contact_methods)
+                ),
             },
         )
-        return self._dedupe_candidates(all_candidates)
+        return deduped
 
     def _extract_from_regex(
         self,
@@ -377,8 +352,16 @@ class PublicContactExtractor:
                 matched_methods = [methods[m_id] for m_id in matched_method_ids if m_id < len(methods)]
                 candidate.contact_methods = self._merge_methods(candidate.contact_methods, matched_methods)
                 
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "AI contact-method mapping failed, skipping",
+                extra={
+                    "action": "ai_method_mapping_failed",
+                    "error": str(exc),
+                    "candidate_count": len(candidates),
+                    "method_count": len(methods),
+                },
+            )
 
         return candidates
 
@@ -575,12 +558,59 @@ class PublicContactExtractor:
         return list(merged.values())
 
     def _dedupe_candidates(self, candidates: list[ContactCandidate]) -> list[ContactCandidate]:
-        seen: set[tuple[str, str, str]] = set()
-        deduped: list[ContactCandidate] = []
+        """Merge candidates sharing the same email, keeping the highest-quality metadata."""
+        from app.contact_discovery.normalizer import classify_role
+
+        _ROLE_PRIORITY = {
+            "hr": 0,
+            "recruiter": 1,
+            "hiring_manager": 2,
+            "engineering_manager": 3,
+            "other": 4,
+        }
+
+        # Phase 1: group by email address
+        email_map: dict[str, ContactCandidate] = {}
+        no_email: list[ContactCandidate] = []
+
         for candidate in candidates:
-            key = (candidate.company_name.lower(), candidate.name.lower(), candidate.role.lower())
-            if key in seen:
+            emails = [m.value.lower() for m in candidate.contact_methods if m.type == "email"]
+            if not emails:
+                no_email.append(candidate)
                 continue
-            seen.add(key)
+            for email in emails:
+                if email in email_map:
+                    existing = email_map[email]
+                    # Keep the candidate with the more relevant role
+                    existing_priority = _ROLE_PRIORITY.get(classify_role(existing.role), 4)
+                    new_priority = _ROLE_PRIORITY.get(classify_role(candidate.role), 4)
+                    if new_priority < existing_priority:
+                        # Merge contact methods from old into new, then replace
+                        candidate.contact_methods = self._merge_methods(
+                            candidate.contact_methods, existing.contact_methods
+                        )
+                        email_map[email] = candidate
+                    else:
+                        # Merge new methods into existing
+                        existing.contact_methods = self._merge_methods(
+                            existing.contact_methods, candidate.contact_methods
+                        )
+                else:
+                    email_map[email] = candidate
+
+        # Phase 2: dedupe the remaining (no-email) candidates by (company, name, role)
+        seen_keys: set[tuple[str, str, str]] = set()
+        deduped: list[ContactCandidate] = list(email_map.values())
+        # Also dedupe within deduped by identity to avoid duplicates from multi-email
+        seen_ids: set[int] = {id(c) for c in deduped}
+        for c in deduped:
+            seen_keys.add((c.company_name.lower(), c.name.lower(), c.role.lower()))
+
+        for candidate in no_email:
+            key = (candidate.company_name.lower(), candidate.name.lower(), candidate.role.lower())
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
             deduped.append(candidate)
+
         return deduped
