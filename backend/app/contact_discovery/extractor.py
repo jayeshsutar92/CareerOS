@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from urllib.parse import urljoin
@@ -37,6 +38,8 @@ NAME_ROLE_RE = re.compile(
     r"Engineering Manager|Engineering Lead|Head of Engineering))",
     re.I,
 )
+
+AI_CALL_TIMEOUT = 20.0  # Seconds for each AI extraction call
 
 
 class PublicContactFetcher:
@@ -76,11 +79,6 @@ def _clean_text(raw_text: str) -> str:
 class PublicContactExtractor:
     async def extract(self, html: str, *, source_url: str, company_name: str) -> list[ContactCandidate]:
         import urllib.parse
-        import asyncio
-        import dns.resolver
-        import smtplib
-        import random
-        import string
         from app.schemas.contact import ContactCandidate, ContactMethod
 
         soup = BeautifulSoup(html, "html.parser")
@@ -339,7 +337,10 @@ class PublicContactExtractor:
                 ],
                 temperature=0.0
             )
-            response = await client.complete(request)
+            response = await asyncio.wait_for(
+                client.complete(request),
+                timeout=AI_CALL_TIMEOUT,
+            )
             content = response.content.strip()
             if content.startswith("```"):
                 content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
@@ -420,7 +421,10 @@ class PublicContactExtractor:
                 ],
                 temperature=0.0,
             )
-            response = await client.complete(request)
+            response = await asyncio.wait_for(
+                client.complete(request),
+                timeout=AI_CALL_TIMEOUT,
+            )
             content = response.content.strip()
             
             logger.info(
@@ -506,6 +510,15 @@ class PublicContactExtractor:
                     "action": "ai_extraction_json_error",
                     "source_url": source_url,
                     "response_preview": content[:500] if 'content' in dir() else "N/A",
+                },
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "AI extraction timed out",
+                extra={
+                    "action": "ai_extraction_timeout",
+                    "source_url": source_url,
+                    "timeout_seconds": AI_CALL_TIMEOUT,
                 },
             )
         except Exception as e:

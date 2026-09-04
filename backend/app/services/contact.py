@@ -91,10 +91,31 @@ class ContactService:
             if not user_record or user_record.refresh_token_version != expected_token_version:
                 return []
 
-        candidates = await pipeline.extract_contacts(
-            company_name=payload.company_name,
-            source_urls=[str(u) for u in payload.source_urls]
-        )
+        import asyncio
+        from app.contact_discovery.providers import PIPELINE_TIMEOUT
+
+        WORKFLOW_TIMEOUT = 90.0  # Hard overall workflow timeout (seconds)
+
+        candidates = []
+        try:
+            candidates = await asyncio.wait_for(
+                pipeline.extract_contacts(
+                    company_name=payload.company_name,
+                    source_urls=[str(u) for u in payload.source_urls],
+                ),
+                timeout=WORKFLOW_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Contact discovery workflow timed out, persisting partial results",
+                extra={
+                    "action": "workflow_timeout",
+                    "timeout_seconds": WORKFLOW_TIMEOUT,
+                    "company_name": payload.company_name,
+                    "partial_candidates": len(candidates),
+                },
+            )
+
         logger.info("Contacts extracted", extra={"action": "contacts_extracted", "count": len(candidates), "company_name": payload.company_name})
         
         for candidate in candidates:

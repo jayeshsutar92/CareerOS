@@ -11,24 +11,47 @@ from app.contact_discovery.normalizer import classify_role, normalize_whitespace
 
 logger = logging.getLogger(__name__)
 
+# ── Hard execution limits ────────────────────────────────────────────────────
+MAX_PAGES_PER_SITE = 5          # Max sub-pages fetched per website
+MAX_URLS = 3                    # Max source URLs processed per company
+PER_PAGE_FETCH_TIMEOUT = 10.0   # Seconds per page fetch
+PROVIDER_TIMEOUT = 30.0         # Seconds per provider
+PIPELINE_TIMEOUT = 60.0         # Seconds for entire extraction pipeline
+LINKEDIN_MAX_RESULTS = 5        # Max LinkedIn search results to process
+
 class BaseContactExtractorProvider(Protocol):
     async def extract_contacts(self, company_name: str, source_urls: list[str]) -> list[ContactCandidate]:
         ...
 
 class WebsiteExtractorProvider:
     def __init__(self):
-        self.fetcher = PublicContactFetcher()
+        self.fetcher = PublicContactFetcher(timeout_seconds=PER_PAGE_FETCH_TIMEOUT)
         self.extractor = PublicContactExtractor()
         
     async def extract_contacts(self, company_name: str, source_urls: list[str]) -> list[ContactCandidate]:
         all_candidates = []
+        urls_processed = 0
         for source_url in source_urls:
+            if urls_processed >= MAX_URLS:
+                logger.info(
+                    "URL limit reached, stopping website extraction",
+                    extra={"action": "limit_reached", "limit": "MAX_URLS", "value": MAX_URLS, "company_name": company_name},
+                )
+                break
+            urls_processed += 1
             base_url = str(source_url).rstrip('/')
-            paths = ["/careers", "/jobs", "/contact", "/contact-us", "", "/about", "/about-us", "/team"]
+            all_paths = ["/careers", "/jobs", "/contact", "/contact-us", "", "/about", "/about-us", "/team"]
+            paths = all_paths[:MAX_PAGES_PER_SITE]
             
             async def fetch_path(p):
                 try:
-                    return await self.fetcher.fetch(base_url + p)
+                    return await asyncio.wait_for(
+                        self.fetcher.fetch(base_url + p),
+                        timeout=PER_PAGE_FETCH_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("Page fetch timed out", extra={"action": "fetch_timeout", "url": base_url + p})
+                    return ""
                 except Exception:
                     return ""
             
@@ -44,7 +67,7 @@ class WebsiteExtractorProvider:
                 source_url=str(source_url),
                 company_name=company_name,
             )
-            logger.info("Source analyzed", extra={"action": "source_analyzed", "source": source_url, "candidates_found": len(candidates)})
+            logger.info("Source analyzed", extra={"action": "source_analyzed", "source": source_url, "candidates_found": len(candidates), "pages_fetched": len(paths)})
             all_candidates.extend(candidates)
             
         return all_candidates
@@ -54,7 +77,7 @@ class LinkedInSearchExtractorProvider:
         pass
         
     async def _safe_search(self, query: str, max_results: int) -> list[dict[str, Any]]:
-        @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+        @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
         def do_search():
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=max_results))
@@ -68,7 +91,7 @@ class LinkedInSearchExtractorProvider:
         query = f'site:linkedin.com/in "{company_name}" ("HR" OR "Recruiter" OR "Engineering Manager" OR "Talent Acquisition" OR "People Operations")'
         
         try:
-            results = await self._safe_search(query, max_results=10)
+            results = await self._safe_search(query, max_results=LINKEDIN_MAX_RESULTS)
         except Exception as e:
             logger.error(f"LinkedIn snippet search failed for {company_name}: {e}")
             return []
@@ -133,15 +156,31 @@ class ContactExtractionPipeline:
         ]
         
     async def extract_contacts(self, company_name: str, source_urls: list[str]) -> list[ContactCandidate]:
-        tasks = [p.extract_contacts(company_name, source_urls) for p in self.providers]
-        results_lists = await asyncio.gather(*tasks, return_exceptions=True)
-        
         all_candidates = []
-        for res in results_lists:
-            if isinstance(res, list):
-                all_candidates.extend(res)
-            elif isinstance(res, Exception):
-                logger.error(f"Contact extraction provider failed: {res}")
+        for i, provider in enumerate(self.providers):
+            provider_name = type(provider).__name__
+            try:
+                result = await asyncio.wait_for(
+                    provider.extract_contacts(company_name, source_urls),
+                    timeout=PROVIDER_TIMEOUT,
+                )
+                all_candidates.extend(result)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Provider timed out, using partial results",
+                    extra={
+                        "action": "provider_timeout",
+                        "provider": provider_name,
+                        "timeout_seconds": PROVIDER_TIMEOUT,
+                        "company_name": company_name,
+                        "partial_candidates": len(all_candidates),
+                    },
+                )
+            except Exception as exc:
+                logger.error(
+                    f"Contact extraction provider failed: {exc}",
+                    extra={"action": "provider_failed", "provider": provider_name},
+                )
                 
         # Deduplication happens later in ContactService.upsert_candidate but we can do basic dedupe here
         logger.info(
