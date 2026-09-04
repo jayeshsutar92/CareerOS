@@ -68,11 +68,21 @@ class EmailPersonalizationService:
                 )
                 result_read.id = draft_record.id
                 result_read.status = "draft"
+                logger.info(
+                    "Email draft persisted",
+                    extra={
+                        "user_id": str(aggregated_payload.user_id),
+                        "contact_id": str(aggregated_payload.contact_id),
+                        "draft_id": str(draft_record.id),
+                    },
+                )
             except Exception as db_exc:
-                logger.warning(
-                    "Could not persist generated email draft to database",
+                logger.exception(
+                    "Failed to persist email draft",
                     extra={"error": str(db_exc)},
                 )
+                await self.session.rollback()
+                raise
 
         return result_read
 
