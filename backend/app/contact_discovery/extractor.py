@@ -175,80 +175,44 @@ class PublicContactExtractor:
 
         candidates = await self._map_methods_to_candidates(candidates, filtered_methods)
 
-        # SMTP VERIFICATION WORKFLOW
+        # SMTP verification removed – accept all extracted email candidates without SMTP checks.
         domain = urllib.parse.urlparse(source_url).netloc.replace("www.", "")
-        
-        def _verify_email(email: str) -> bool:
-            try:
-                records = dns.resolver.resolve(domain, 'MX')
-                mx_record = str(records[0].exchange)
-                server = smtplib.SMTP(timeout=5)
-                server.set_debuglevel(0)
-                server.connect(mx_record)
-                server.helo(server.local_hostname)
-                server.mail("hello@example.com")
-                code, _ = server.rcpt(email)
-                server.quit()
-                return code == 250
-            except Exception:
-                return False
-
-        random_prefix = ''.join(random.choices(string.ascii_lowercase, k=10))
-        is_catch_all = await asyncio.to_thread(_verify_email, f"{random_prefix}@{domain}")
-
-        verified_candidates = []
-
-        if not is_catch_all:
-            # 1. Verify specific extracted candidates by generating standard permutations
-            for c in candidates:
-                has_email = any(m.type == 'email' for m in c.contact_methods)
-                if not has_email and " " in c.name:
-                    parts = c.name.lower().split(" ")
-                    first = parts[0]
-                    last = "".join(parts[1:])
-                    perms = [
-                        f"{first}@{domain}",
-                        f"{first}.{last}@{domain}",
-                        f"{first[0]}{last}@{domain}",
-                        f"{first}_{last}@{domain}"
-                    ]
-                    for perm in perms:
-                        valid = await asyncio.to_thread(_verify_email, perm)
-                        if valid:
-                            c.contact_methods.append(ContactMethod(type="email", value=perm))
-                            break
-
-            # 2. Fallback: discover generic department contacts if needed
-            generic_roles = [
-                ("HR", f"hr@{domain}"),
-                ("Talent Acquisition", f"talent@{domain}"),
-                ("Recruiter", f"careers@{domain}"),
-                ("Recruiter", f"recruiting@{domain}")
-            ]
-            async def verify_generic(role_name, email):
-                if await asyncio.to_thread(_verify_email, email):
-                    return ContactCandidate(
-                        name=f"{company_name} {role_name}",
-                        role=role_name,
-                        company_name=company_name,
-                        source_url=source_url,
-                        contact_methods=[ContactMethod(type="email", value=email)]
-                    )
-                return None
-
-            tasks = [verify_generic(rn, em) for rn, em in generic_roles]
-            results = await asyncio.gather(*tasks)
-            verified_candidates.extend([r for r in results if r])
-
+        logger.info(
+            "SMTP verification disabled – processing email candidates without verification",
+            extra={
+                "action": "smtp_verification_skipped",
+                "source_url": source_url,
+                "domain": domain,
+                "candidate_count": len(candidates),
+            },
+        )
+        # Optionally generate generic department contacts without verification.
+        generic_roles = [
+            ("HR", f"hr@{domain}"),
+            ("Talent Acquisition", f"talent@{domain}"),
+            ("Recruiter", f"careers@{domain}"),
+            ("Recruiter", f"recruiting@{domain}"),
+        ]
+        verified_candidates = [
+            ContactCandidate(
+                name=f"{company_name} {role_name}",
+                role=role_name,
+                company_name=company_name,
+                source_url=source_url,
+                contact_methods=[ContactMethod(type="email", value=email)],
+            )
+            for role_name, email in generic_roles
+        ]
+        # No SMTP verification performed; all extracted candidates are considered valid.
         all_candidates = candidates + verified_candidates
         logger.info(
-            "Extraction pipeline completed",
+            "Extraction pipeline completed (SMTP verification omitted)",
             extra={
                 "action": "extraction_complete",
                 "source_url": source_url,
                 "total_candidates": len(all_candidates),
                 "from_extraction": len(candidates),
-                "from_smtp_verification": len(verified_candidates),
+                "from_smtp_verification": 0,
             },
         )
         return self._dedupe_candidates(all_candidates)
