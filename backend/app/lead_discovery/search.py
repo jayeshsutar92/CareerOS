@@ -10,6 +10,15 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
+JUNK_DOMAINS = {
+    "wikipedia.org", "linkedin.com", "naukri.com", "glassdoor.", "indeed.",
+    "ambitionbox.com", "crunchbase.com", "bloomberg.com", "pitchbook.com",
+    "zaubacorp.com", "justdial.com", "vcsdata.com", "topcompanieslist.com",
+    "f6s.com", "zoominfo.com", "dnb.com", "yelp.com", "yellowpages.com",
+    "facebook.com", "twitter.com", "x.com", "instagram.com", "youtube.com",
+    "glassdoor.co.in", "indeed.co.in"
+}
+
 @dataclass
 class CompanyLead:
     name: str
@@ -40,11 +49,11 @@ class DDGSearchProvider:
             logger.error(f"DDG search failed for query '{query}': {e}")
             return []
 
-class OfficialWebsiteProvider(DDGSearchProvider):
+class ATSDirectoryProvider(DDGSearchProvider):
     async def search_companies(self, job_role: str | None, location: str, work_mode: str, max_results: int) -> list[CompanyLead]:
-        job_str = f"{job_role} " if job_role else "companies "
-        search_query = f"{job_str}{work_mode} jobs in {location} company careers -site:linkedin.com -site:naukri.com -site:glassdoor.com -site:indeed.com"
-        logger.info("Querying Official Website Provider", extra={"query": search_query})
+        job_str = f"{job_role} " if job_role else ""
+        search_query = f"\"{job_str.strip()}\" {location} {work_mode} site:jobs.lever.co OR site:boards.greenhouse.io OR site:apply.workable.com"
+        logger.info("Querying ATS Directory Provider", extra={"query": search_query})
         
         results = await self._safe_search(search_query, max_results=max_results + 10)
         
@@ -52,22 +61,27 @@ class OfficialWebsiteProvider(DDGSearchProvider):
         for r in results:
             url = r.get("href", "")
             title = r.get("title", "")
-            if not url or any(x in url.lower() for x in ["linkedin.com", "naukri.com", "glassdoor.com", "indeed.com"]): 
+            if not url or not any(x in url.lower() for x in ["lever.co", "greenhouse.io", "workable.com"]):
                 continue
             
-            # Simple domain extraction
-            domain = urlparse(url).netloc.replace("www.", "")
-            name = domain.split(".")[0].capitalize()
-            # Try to get a better name from title
+            # Extract company name from ATS URL (e.g. jobs.lever.co/companyname)
+            domain_parts = urlparse(url).path.strip("/").split("/")
+            if not domain_parts:
+                continue
+                
+            name_slug = domain_parts[0]
+            name = name_slug.replace("-", " ").title()
+            
+            # Clean title
             clean_title = re.sub(r'[^a-zA-Z0-9\s-]', '', title).split("-")[0].strip()
-            if clean_title and len(clean_title) < 30:
+            if clean_title and len(clean_title) < 40 and len(clean_title) > 2:
                 name = clean_title
                 
-            leads.append(CompanyLead(name=name, url=url, source_score=100, source_name="Google/DDG: Official Site", is_official_resolved=True))
+            leads.append(CompanyLead(name=name, url=url, source_score=90, source_name="Google/DDG: ATS", is_official_resolved=False))
             if len(leads) >= max_results:
                 break
         
-        logger.info("Official Website Provider finished", extra={"found": len(leads)})
+        logger.info("ATS Directory Provider finished", extra={"found": len(leads)})
         return leads
 
 class LinkedInCompanyProvider(DDGSearchProvider):
@@ -84,9 +98,10 @@ class LinkedInCompanyProvider(DDGSearchProvider):
             title = r.get("title", "")
             if not url or "linkedin.com/company" not in url: continue
             
-            # Title is usually "Company Name | LinkedIn"
+            # LinkedIn title is usually "Company Name | LinkedIn" or "Company Name - Overview"
             name = title.split("|")[0].strip()
-            name = re.sub(r'\s*[-\|].*$', '', name) # Strip suffix
+            name = re.split(r'\s*-\s*Overview|\s*-\s*Home|\s*\|\s*LinkedIn', name, flags=re.IGNORECASE)[0].strip()
+            
             leads.append(CompanyLead(name=name, url=url, source_score=60, source_name="Google/DDG: LinkedIn", is_official_resolved=False))
             if len(leads) >= max_results:
                 break
@@ -108,8 +123,12 @@ class NaukriProvider(DDGSearchProvider):
             title = r.get("title", "")
             if not url or "naukri.com" not in url: continue
             
+            # Naukri title: "Careers in CompanyName - Jobs in CompanyName"
             name = title.split("|")[0].strip()
-            name = re.sub(r'\s*[-\|].*$', '', name) # Strip suffix
+            name = re.sub(r'(?i)Careers\s+in\s+', '', name)
+            name = re.sub(r'(?i)\s*-\s*Jobs\s+in\s+.*$', '', name)
+            name = re.split(r'\s*-\s*Naukri\.com', name, flags=re.IGNORECASE)[0].strip()
+            
             leads.append(CompanyLead(name=name, url=url, source_score=40, source_name="Google/DDG: Naukri", is_official_resolved=False))
             if len(leads) >= max_results:
                 break
@@ -121,7 +140,7 @@ class SearchPipeline:
     def __init__(self, max_results: int = 10):
         self.max_results = max_results
         self.providers: list[BaseSearchProvider] = [
-            OfficialWebsiteProvider(),
+            ATSDirectoryProvider(),
             LinkedInCompanyProvider(),
             NaukriProvider(),
         ]
@@ -134,15 +153,31 @@ class SearchPipeline:
         if lead.is_official_resolved:
             return lead
             
-        search_query = f"{lead.name} official website -site:linkedin.com -site:naukri.com -site:glassdoor.com -site:indeed.com -site:ambitionbox.com"
+        search_query = f"\"{lead.name}\" official website company"
         
         async with self._resolution_semaphore:
-            results = await self.ddg_provider._safe_search(search_query, max_results=3)
+            results = await self.ddg_provider._safe_search(search_query, max_results=5)
             
         for r in results:
             url = r.get("href", "")
             if not url: continue
-            if any(x in url.lower() for x in ["linkedin.com", "naukri.com", "glassdoor.com", "indeed.com", "ambitionbox.com", "wikipedia.org"]):
+            
+            domain = urlparse(url).netloc.lower()
+            if domain.startswith("www."):
+                domain = domain[4:]
+                
+            # Filter junk domains
+            is_junk = False
+            for junk in JUNK_DOMAINS:
+                if junk in domain:
+                    is_junk = True
+                    break
+                    
+            if is_junk:
+                logger.debug("Rejected junk domain during official resolution", extra={
+                    "company_name": lead.name,
+                    "rejected_domain": domain
+                })
                 continue
             
             logger.info("Resolved official website", extra={
@@ -182,17 +217,20 @@ class SearchPipeline:
         resolve_tasks = [self._resolve_official_website(lead) for lead in all_leads]
         resolved_leads = await asyncio.gather(*resolve_tasks, return_exceptions=True)
         
-        valid_leads = [l for l in resolved_leads if isinstance(l, CompanyLead)]
+        valid_leads = [l for l in resolved_leads if isinstance(l, CompanyLead) and l.is_official_resolved]
         
         # Deduplicate by normalized domain and sort by score
         def normalize_domain(url: str) -> str:
             try:
-                # If we couldn't resolve, just use the raw URL to avoid deduplicating all aggregators together
-                if any(x in url.lower() for x in ["linkedin.com", "naukri.com", "glassdoor.com", "indeed.com"]):
-                    return url.lower()
                 domain = urlparse(url).netloc.lower()
                 if domain.startswith("www."):
                     domain = domain[4:]
+                    
+                # If we couldn't resolve or it's a known aggregator, use the raw URL to avoid deduplicating all aggregators together
+                for junk in JUNK_DOMAINS:
+                    if junk in domain:
+                        return url.lower()
+                        
                 return domain
             except Exception:
                 return ""

@@ -1,0 +1,44 @@
+# Lead & Contact Discovery Audit Report
+
+## 1. Company Discovery & Intelligence
+**Issue: Scrapes irrelevant domains and unexpected companies**
+* **Root Cause:** The `SearchPipeline` queries DuckDuckGo for job aggregators (LinkedIn, Naukri). It then attempts to resolve official domains by parsing the job listing title (which is often generic, e.g., "Software", "Tech") and running a second DDG search for `"{parsed_name} official website"`. The search engine guesses incorrectly, returning unrelated competitor domains or news sites. 
+* **Evidence from verification:** Searching for "Software Engineer" in "Pune" returned 20 invalid companies such as Wikipedia's "List of companies of India", generic business directories ("Topcompanieslist"), and Delhi-based companies, confirming the search query construction fails to isolate legitimate businesses.
+* **Impact:** The crawler scrapes completely random websites, wasting AI tokens and populating the dashboard with garbage data.
+* **Suggested Fix:** Replace web-search-based entity resolution with a reliable B2B data API (e.g., Clearbit, Apollo), or force users to input exact company domains instead of relying on fuzzy job board titles.
+* **Priority:** Critical
+
+**Issue: Lack of User Isolation (Global Overwrites & Data Leaks)**
+* **Root Cause:** The `Company` and `CompanyIntelligence` database models do not have a `user_id`. `CompanyIntelligenceRepository.upsert` updates records globally based on `website_url`. Furthermore, the `/api/v1/company-intelligence` list endpoint lacks `Depends(get_current_user)` and returns all companies globally.
+* **Evidence from verification:** Logged in as user `audit2@example.com` and hit the `/company-intelligence` endpoint. `audit2` received all 20 companies discovered exclusively by user `spidey0@gmail.com`.
+* **Impact:** Concurrent discoveries for the same company by different users cause database race conditions. If User A deletes a company, it deletes the global intelligence record, breaking User B's dashboard.
+* **Suggested Fix:** Add `user_id` to both models (or a many-to-many user tracking table). Scope all repository queries and API endpoints strictly to the authenticated user.
+* **Priority:** Critical
+
+**Issue: "Delete Company" Endpoint Crashes**
+* **Root Cause:** `delete_for_user` in `CompanyIntelligenceService` attempts to execute `delete(Email).where(Email.company_id == record.company_id)`. The `Email` SQLAlchemy model does not have a `company_id` attribute, resulting in a fatal `AttributeError`.
+* **Impact:** Users are unable to delete companies; the API throws a 500 Internal Server Error.
+* **Suggested Fix:** Remove `Email.company_id` from the query. To delete emails by company, join through the `contacts`/`recruiters` table, or add `company_id` to the `Email` model via an Alembic migration.
+* **Priority:** High
+
+## 2. Contact Discovery & Email Extraction
+**Issue: HR/Recruiter Emails are rarely found and Tasks hang for minutes**
+* **Root Cause:** `extractor.py` includes a synchronous `SMTP VERIFICATION WORKFLOW`. It generates email permutations and uses `smtplib.SMTP(timeout=5)` over Port 25 to verify them. Port 25 is blocked by almost all cloud providers (AWS, GCP) and residential ISPs. This causes `_verify_email` to timeout (blocking the asyncio thread for 5s per candidate) and unconditionally fail, silently discarding valid generated emails.
+* **Evidence from verification:** The pipeline identified 7 AI-extracted "contacts" (albeit gibberish contacts from Wikipedia), but 0 emails were attached to them because the background task spent minutes timing out on blocked Port 25 requests before ultimately rejecting all permutations.
+* **Impact:** Background workers hang indefinitely. Genuine contact emails are thrown away because the SMTP check fails.
+* **Suggested Fix:** Remove the synchronous SMTP Port 25 verification. Use an asynchronous third-party email verification API (like ZeroBounce or Hunter) or return highly confident permutations with an "Unverified" flag rather than dropping them.
+* **Priority:** Critical
+
+**Issue: Email Drafts are generated but never saved (Silent Failure)**
+* **Root Cause:** `EmailPersonalizationService.generate_now` attempts to persist drafts using `recruiter_id=aggregated_payload.contact_id`. The `contact_id` comes from the `contacts` table, but `emails.recruiter_id` has a strict Foreign Key constraint to the deprecated `recruiters` table. This raises a PostgreSQL IntegrityError, which is silently swallowed by a `try...except` block that only logs a warning.
+* **Evidence from verification:** The pipeline successfully reached the email drafting stage, but querying `/emails` for `spidey0@gmail.com` returned 0 email drafts, confirming that DB persistence is quietly failing.
+* **Impact:** The AI generates the personalized email, but it is never saved to the database. The user's dashboard remains empty.
+* **Suggested Fix:** Unify the legacy `Recruiter` schema with the new `Contact` schema. Update the `emails.recruiter_id` foreign key to point to `contacts.id` via an Alembic migration, and rename the column to `contact_id`.
+* **Priority:** Critical
+
+**Issue: Random/Inaccurate Email Extraction**
+* **Root Cause:** `_extract_contact_methods` indiscriminately grabs all emails on a webpage using Regex (including `info@`, `support@`). It then uses a zero-temperature LLM call to guess which email belongs to which extracted candidate.
+* **Evidence from verification:** On Wikipedia, the AI extractor completely hallucinated contacts like "Afghanistan Armenia Azerbaijan Ba" and assigned them the "hr" role because it aggressively forced LLM mappings on irrelevant text.
+* **Impact:** Frequent mismatches where generic support emails are mapped to the VP of HR.
+* **Suggested Fix:** Stop using LLMs to map loose regex emails. Instead, rely solely on established permutation generation (first.last@domain) backed by a reliable validation API.
+* **Priority:** Medium
