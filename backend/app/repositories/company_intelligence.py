@@ -14,26 +14,27 @@ class CompanyIntelligenceRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_by_id(self, intelligence_id: UUID) -> CompanyIntelligence | None:
-        result = await self.session.execute(
-            select(CompanyIntelligence).where(CompanyIntelligence.id == intelligence_id)
-        )
+    async def get_by_id(self, intelligence_id: UUID, user_id: UUID | None = None) -> CompanyIntelligence | None:
+        stmt = select(CompanyIntelligence).where(CompanyIntelligence.id == intelligence_id)
+        if user_id:
+            stmt = stmt.where(CompanyIntelligence.user_id == user_id)
+        result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_by_company_id(self, company_id: UUID) -> CompanyIntelligence | None:
-        result = await self.session.execute(
-            select(CompanyIntelligence)
-            .where(CompanyIntelligence.company_id == company_id)
-            .order_by(CompanyIntelligence.created_at.desc())
-        )
+    async def get_by_company_id(self, company_id: UUID, user_id: UUID | None = None) -> CompanyIntelligence | None:
+        stmt = select(CompanyIntelligence).where(CompanyIntelligence.company_id == company_id)
+        if user_id:
+            stmt = stmt.where(CompanyIntelligence.user_id == user_id)
+        stmt = stmt.order_by(CompanyIntelligence.created_at.desc())
+        result = await self.session.execute(stmt)
         return result.scalars().first()
 
-    async def get_by_website_url(self, website_url: str) -> CompanyIntelligence | None:
-        result = await self.session.execute(
-            select(CompanyIntelligence)
-            .where(CompanyIntelligence.website_url == website_url)
-            .order_by(CompanyIntelligence.created_at.desc())
-        )
+    async def get_by_website_url(self, website_url: str, user_id: UUID | None = None) -> CompanyIntelligence | None:
+        stmt = select(CompanyIntelligence).where(CompanyIntelligence.website_url == website_url)
+        if user_id:
+            stmt = stmt.where(CompanyIntelligence.user_id == user_id)
+        stmt = stmt.order_by(CompanyIntelligence.created_at.desc())
+        result = await self.session.execute(stmt)
         return result.scalars().first()
 
     async def upsert(
@@ -52,13 +53,14 @@ class CompanyIntelligenceRepository:
         raw_summary: str | None = None,
         status: str = IntelligenceStatus.COMPLETED,
         error: str | None = None,
+        user_id: UUID | None = None,
     ) -> CompanyIntelligence:
-        # Search existing record by company_id or website_url
+        # Search existing record by company_id or website_url and user_id
         existing: CompanyIntelligence | None = None
         if company_id:
-            existing = await self.get_by_company_id(company_id)
+            existing = await self.get_by_company_id(company_id, user_id)
         if not existing:
-            existing = await self.get_by_website_url(website_url)
+            existing = await self.get_by_website_url(website_url, user_id)
 
         now = datetime.now(UTC)
 
@@ -97,6 +99,7 @@ class CompanyIntelligenceRepository:
             raw_summary=raw_summary,
             status=status,
             error=error,
+            user_id=user_id,
             analysis_version=1,
             last_analyzed_at=now,
         )
@@ -108,12 +111,17 @@ class CompanyIntelligenceRepository:
     async def list(
         self,
         *,
+        user_id: UUID | None = None,
         page: int = 1,
         page_size: int = 20,
         search: str | None = None,
     ) -> tuple[list[CompanyIntelligence], int]:
         stmt = select(CompanyIntelligence)
         count_stmt = select(func.count(CompanyIntelligence.id))
+        
+        if user_id:
+            stmt = stmt.where(CompanyIntelligence.user_id == user_id)
+            count_stmt = count_stmt.where(CompanyIntelligence.user_id == user_id)
 
         if search:
             pattern = f"%{search}%"

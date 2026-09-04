@@ -34,12 +34,13 @@ async def analyze_company(
 @router.get("", response_model=CompanyIntelligenceListResponse)
 async def list_company_intelligence(
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     search: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
 ) -> CompanyIntelligenceListResponse:
     return await CompanyIntelligenceService(session).list(
-        page=page, page_size=page_size, search=search
+        user_id=current_user.id, page=page, page_size=page_size, search=search
     )
 
 
@@ -47,8 +48,9 @@ async def list_company_intelligence(
 async def get_company_intelligence(
     intelligence_id: UUID,
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> CompanyIntelligenceRead:
-    record = await CompanyIntelligenceService(session).get(intelligence_id)
+    record = await CompanyIntelligenceService(session).get(intelligence_id, user_id=current_user.id)
     return CompanyIntelligenceRead.model_validate(record)
 
 
@@ -56,8 +58,9 @@ async def get_company_intelligence(
 async def get_company_intelligence_by_company_id(
     company_id: UUID,
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> CompanyIntelligenceRead:
-    record = await CompanyIntelligenceService(session).get_by_company_id(company_id)
+    record = await CompanyIntelligenceService(session).get_by_company_id(company_id, user_id=current_user.id)
     return CompanyIntelligenceRead.model_validate(record)
 
 
@@ -65,8 +68,9 @@ async def get_company_intelligence_by_company_id(
 async def refresh_company_intelligence(
     intelligence_id: UUID,
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> CompanyIntelligenceResponse:
-    return await CompanyIntelligenceService(session).refresh(intelligence_id)
+    return await CompanyIntelligenceService(session).refresh(intelligence_id, user_id=current_user.id)
 
 
 @router.delete("/{intelligence_id}", status_code=status.HTTP_204_NO_CONTENT)

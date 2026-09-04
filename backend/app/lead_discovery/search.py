@@ -5,7 +5,7 @@ import asyncio
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)

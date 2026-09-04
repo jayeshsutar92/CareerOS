@@ -11,12 +11,14 @@ class CompanyIntelligenceRequest(BaseModel):
     website_url: HttpUrl
     company_name: str | None = Field(default=None, max_length=255)
     company_id: UUID | None = None
+    user_id: UUID | None = None
     run_in_background: bool = False
 
 
 class CompanyIntelligenceRead(BaseModel):
     id: UUID
     company_id: UUID | None = None
+    user_id: UUID | None = None
     company_name: str
     website_url: str
     overview: str | None = None

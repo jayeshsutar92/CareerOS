@@ -143,7 +143,7 @@ class LeadDiscoveryAgent(BaseAgent):
                             run_in_background=False
                         )
                         logger.info("Company Intelligence started", extra={"action": "intelligence_started", "company_id": str(company_id), "website_url": url})
-                        intel_resp = await company_intel_service.analyze(intel_req)
+                        intel_resp = await company_intel_service.analyze(intel_req, user_id=user_uuid)
                         if intel_resp.data:
                             company_intel_id = intel_resp.data.id
                         logger.info("Company intelligence crawled and persisted", extra={"action": "intelligence_crawled", "intel_id": str(company_intel_id)})

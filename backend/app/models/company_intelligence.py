@@ -34,6 +34,12 @@ class CompanyIntelligence(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     company_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     website_url: Mapped[str] = mapped_column(String(2048), nullable=False, index=True)
     overview: Mapped[str | None] = mapped_column(Text, nullable=True)

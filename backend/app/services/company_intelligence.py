@@ -40,13 +40,13 @@ class CompanyIntelligenceService:
             )
             return CompanyIntelligenceResponse(status="queued", task_id=task.id)
 
-        intelligence = await self.analyze_now(payload)
+        intelligence = await self.analyze_now(payload, user_id=user_id)
         return CompanyIntelligenceResponse(
             status="completed",
             data=CompanyIntelligenceRead.model_validate(intelligence),
         )
 
-    async def analyze_now(self, payload: CompanyIntelligenceRequest) -> CompanyIntelligence:
+    async def analyze_now(self, payload: CompanyIntelligenceRequest, user_id: UUID | None = None) -> CompanyIntelligence:
         url_str = str(payload.website_url)
         company_name = payload.company_name or ""
 
@@ -56,6 +56,7 @@ class CompanyIntelligenceService:
             company_name=company_name or url_str,
             company_id=payload.company_id,
             status=IntelligenceStatus.RUNNING,
+            user_id=user_id,
         )
 
         try:
@@ -147,11 +148,12 @@ class CompanyIntelligenceService:
                 company_id=payload.company_id,
                 status=IntelligenceStatus.FAILED,
                 error=str(exc),
+                user_id=user_id,
             )
             return failed_record
 
-    async def get(self, intelligence_id: UUID) -> CompanyIntelligence:
-        record = await self.repository.get_by_id(intelligence_id)
+    async def get(self, intelligence_id: UUID, user_id: UUID | None = None) -> CompanyIntelligence:
+        record = await self.repository.get_by_id(intelligence_id, user_id=user_id)
         if record is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -159,8 +161,8 @@ class CompanyIntelligenceService:
             )
         return record
 
-    async def get_by_company_id(self, company_id: UUID) -> CompanyIntelligence:
-        record = await self.repository.get_by_company_id(company_id)
+    async def get_by_company_id(self, company_id: UUID, user_id: UUID | None = None) -> CompanyIntelligence:
+        record = await self.repository.get_by_company_id(company_id, user_id=user_id)
         if record is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -168,15 +170,15 @@ class CompanyIntelligenceService:
             )
         return record
 
-    async def refresh(self, intelligence_id: UUID) -> CompanyIntelligenceResponse:
-        record = await self.get(intelligence_id)
+    async def refresh(self, intelligence_id: UUID, user_id: UUID | None = None) -> CompanyIntelligenceResponse:
+        record = await self.get(intelligence_id, user_id=user_id)
         payload = CompanyIntelligenceRequest(
             website_url=record.website_url,
             company_name=record.company_name,
             company_id=record.company_id,
             run_in_background=False,
         )
-        updated = await self.analyze_now(payload)
+        updated = await self.analyze_now(payload, user_id=user_id)
         return CompanyIntelligenceResponse(
             status="completed",
             data=CompanyIntelligenceRead.model_validate(updated),
@@ -185,11 +187,12 @@ class CompanyIntelligenceService:
     async def list(
         self,
         *,
+        user_id: UUID | None = None,
         page: int = 1,
         page_size: int = 20,
         search: str | None = None,
     ) -> CompanyIntelligenceListResponse:
-        items, total = await self.repository.list(page=page, page_size=page_size, search=search)
+        items, total = await self.repository.list(user_id=user_id, page=page, page_size=page_size, search=search)
         return CompanyIntelligenceListResponse(
             items=[CompanyIntelligenceRead.model_validate(item) for item in items],
             total=total,
@@ -204,7 +207,7 @@ class CompanyIntelligenceService:
         from app.models.email import Email
         from app.models.company_intelligence import CompanyIntelligence
         
-        record = await self.get(intelligence_id)
+        record = await self.get(intelligence_id, user_id=user_id)
         
         if record.company_id:
             # Delete associated emails for this user and company
