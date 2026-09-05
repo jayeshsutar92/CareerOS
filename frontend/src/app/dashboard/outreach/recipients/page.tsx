@@ -17,9 +17,7 @@ export default function RecipientSelectionPage() {
       toast.error("Please select at least one recipient to proceed.")
       return
     }
-    toast.success(`Forwarding ${selectedRecipientIds.length} recipients to the next phase...`)
-    // Next phase routing will be implemented later, for example:
-    // router.push("/dashboard/outreach/compose")
+    router.push("/dashboard/outreach/compose")
   }
 
   return (

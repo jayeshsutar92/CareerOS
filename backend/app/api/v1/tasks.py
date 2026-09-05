@@ -13,6 +13,7 @@ class TaskStatusResponse(BaseModel):
     status: str
     error: str | None = None
     result: dict[str, Any] | None = None
+    progress: dict[str, Any] | None = None
 
 @router.get("/{task_id}", response_model=TaskStatusResponse)
 async def get_task_status(
@@ -21,13 +22,20 @@ async def get_task_status(
 ) -> TaskStatusResponse:
     task_result = await get_task_result(task_id, str(current_user.id))
     
+    from app.core.redis import get_redis_client
+    import json
+    redis = get_redis_client()
+    progress_val = await redis.get(f"task:progress:{task_id}")
+    progress = json.loads(progress_val) if progress_val else None
+
     if not task_result:
-        return TaskStatusResponse(status="processing")
+        return TaskStatusResponse(status="processing", progress=progress)
         
     return TaskStatusResponse(
         status=task_result.status.value,
         error=task_result.error,
         result=task_result.result,
+        progress=progress,
     )
 
 @router.post("/{task_id}/cancel", status_code=status.HTTP_204_NO_CONTENT)
