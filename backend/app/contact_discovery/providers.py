@@ -2,7 +2,7 @@ import logging
 import re
 import asyncio
 from typing import Protocol, Any
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.schemas.contact import ContactCandidate, ContactMethod
