@@ -9,6 +9,7 @@ from app.models.portfolio import Portfolio
 from app.models.recruiter import Recruiter
 from app.models.resume import Resume
 from app.models.user import User
+from app.models.template import Template
 
 __all__ = [
     "AgentLog",
@@ -23,5 +24,6 @@ __all__ = [
     "Recruiter",
     "Resume",
     "User",
+    "Template",
 ]
 

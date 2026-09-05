@@ -11,6 +11,8 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.redis import close_redis_client, ping_redis
+from app.db.session import SessionLocal
+from app.services.template import TemplateService
 from fastapi.middleware.cors import CORSMiddleware
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
     register_agents()
+    
+    # Seed templates on startup
+    try:
+        async with SessionLocal() as session:
+            template_service = TemplateService(session)
+            await template_service.seed_templates()
+            await session.commit()
+    except Exception:
+        logger.exception("Failed to seed templates")
+
     logger.info("Application startup", extra={"environment": settings.app_env})
     try:
         await ping_redis()

@@ -12,6 +12,7 @@ from app.api.v1.jobs import router as jobs_router
 from app.api.v1.lead_discovery import router as lead_discovery_router
 from app.api.v1.tasks import router as tasks_router
 from app.api.v1.admin import router as admin_router
+from app.api.v1.template import router as template_router
 
 api_router = APIRouter(dependencies=[Depends(enforce_rate_limit)])
 api_router.include_router(auth_router)
@@ -25,5 +26,5 @@ api_router.include_router(lead_discovery_router)
 api_router.include_router(tasks_router)
 api_router.include_router(admin_router)
 api_router.include_router(health_router)
-
+api_router.include_router(template_router, prefix="/templates", tags=["templates"])
 
