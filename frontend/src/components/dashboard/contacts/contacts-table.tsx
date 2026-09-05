@@ -70,7 +70,14 @@ const getRoleCategoryBadge = (category: string) => {
   }
 };
 
-export function ContactsTable() {
+interface ContactsTableProps {
+  selectionMode?: boolean;
+  selectedIds?: string[];
+  onSelect?: (id: string) => void;
+  onSelectAll?: (ids: string[], isSelected: boolean) => void;
+}
+
+export function ContactsTable({ selectionMode = false, selectedIds = [], onSelect, onSelectAll }: ContactsTableProps = {}) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -166,12 +173,23 @@ export function ContactsTable() {
         <Table>
           <TableHeader className="bg-zinc-900/50">
             <TableRow className="border-zinc-800 hover:bg-transparent">
+              {selectionMode && (
+                <TableHead className="w-12">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-zinc-700 bg-zinc-950 text-primary focus:ring-zinc-700"
+                    checked={!!data?.items?.length && data.items.every((c: ContactRead) => selectedIds.includes(c.id))}
+                    onChange={(e) => onSelectAll?.(data?.items?.map((c: ContactRead) => c.id) || [], e.target.checked)}
+                  />
+                </TableHead>
+              )}
               <TableHead className="text-zinc-400">Name / Role</TableHead>
               <TableHead className="text-zinc-400">Company</TableHead>
               <TableHead className="text-zinc-400">Category</TableHead>
-              <TableHead className="text-zinc-400">Methods</TableHead>
+              {!selectionMode && <TableHead className="text-zinc-400">Methods</TableHead>}
+              {selectionMode && <TableHead className="text-zinc-400">Score</TableHead>}
               <TableHead className="text-zinc-400">Added</TableHead>
-              <TableHead className="w-12"></TableHead>
+              {!selectionMode && <TableHead className="w-12"></TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -205,6 +223,16 @@ export function ContactsTable() {
             ) : (
               data.items.map((contact: ContactRead) => (
                 <TableRow key={contact.id} className="border-zinc-800 hover:bg-zinc-900/50">
+                  {selectionMode && (
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-zinc-700 bg-zinc-950 text-primary focus:ring-zinc-700"
+                        checked={selectedIds.includes(contact.id)}
+                        onChange={() => onSelect?.(contact.id)}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <div className="font-medium text-white">{contact.name}</div>
                     <div className="text-sm text-zinc-500 line-clamp-1">{contact.role}</div>
@@ -218,66 +246,75 @@ export function ContactsTable() {
                   <TableCell>
                     {getRoleCategoryBadge(contact.role_category)}
                   </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {contact.contact_methods.map((method, idx) => (
-                        <a
-                          key={idx}
-                          href={method.type === 'email' ? `mailto:${method.value}` : method.value.startsWith('http') ? method.value : '#'}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center justify-center bg-zinc-800/50 hover:bg-zinc-700 h-6 w-6 rounded text-zinc-300 transition-colors"
-                          title={method.value}
-                        >
-                          {getMethodIcon(method.type)}
-                        </a>
-                      ))}
-                    </div>
-                  </TableCell>
+                  {!selectionMode && (
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {contact.contact_methods.map((method, idx) => (
+                          <a
+                            key={idx}
+                            href={method.type === 'email' ? `mailto:${method.value}` : method.value.startsWith('http') ? method.value : '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center justify-center bg-zinc-800/50 hover:bg-zinc-700 h-6 w-6 rounded text-zinc-300 transition-colors"
+                            title={method.value}
+                          >
+                            {getMethodIcon(method.type)}
+                          </a>
+                        ))}
+                      </div>
+                    </TableCell>
+                  )}
+                  {selectionMode && (
+                    <TableCell>
+                      <div className="text-sm font-mono text-zinc-400">{contact.confidence_score}%</div>
+                    </TableCell>
+                  )}
                   <TableCell className="text-zinc-500 text-sm whitespace-nowrap">
                     {format(new Date(contact.created_at), "MMM d, yyyy")}
                   </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2 justify-end">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
-                        onClick={() => handleGenerateEmail(contact)}
-                        disabled={generatingEmailId === contact.id}
-                        title="Draft Email"
-                      >
-                        {generatingEmailId === contact.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <MailPlus className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
-                        onClick={() => setSelectedContact(contact)}
-                        title="View Details"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-red-500/70 hover:text-red-400 hover:bg-red-950/30"
-                        onClick={() => {
-                          if (window.confirm("Are you sure you want to delete this contact?")) {
-                            deleteMutation.mutate(contact.id);
-                          }
-                        }}
-                        disabled={deleteMutation.isPending}
-                        title="Delete Contact"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+                  {!selectionMode && (
+                    <TableCell>
+                      <div className="flex gap-2 justify-end">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                          onClick={() => handleGenerateEmail(contact)}
+                          disabled={generatingEmailId === contact.id}
+                          title="Draft Email"
+                        >
+                          {generatingEmailId === contact.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <MailPlus className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                          onClick={() => setSelectedContact(contact)}
+                          title="View Details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-500/70 hover:text-red-400 hover:bg-red-950/30"
+                          onClick={() => {
+                            if (window.confirm("Are you sure you want to delete this contact?")) {
+                              deleteMutation.mutate(contact.id);
+                            }
+                          }}
+                          disabled={deleteMutation.isPending}
+                          title="Delete Contact"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))
             )}
