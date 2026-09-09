@@ -2,7 +2,7 @@ import logging
 import re
 from typing import Protocol, Any
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 from duckduckgo_search import DDGS
@@ -26,6 +26,9 @@ class CompanyLead:
     source_score: int
     source_name: str
     is_official_resolved: bool = False
+    website_confidence: int = 0
+    socials: dict[str, str] = field(default_factory=dict)
+    resolution_evidence: dict[str, Any] = field(default_factory=dict)
 
 class BaseSearchProvider(Protocol):
     async def search_companies(self, job_role: str | None, location: str, work_mode: str, max_results: int) -> list[CompanyLead]:
@@ -148,55 +151,7 @@ class SearchPipeline:
         # Semaphore to limit concurrent DDG official resolution searches
         self._resolution_semaphore = asyncio.Semaphore(3)
         
-    async def _resolve_official_website(self, lead: CompanyLead) -> CompanyLead:
-        """Resolve aggregator/directory URL to an official website."""
-        if lead.is_official_resolved:
-            return lead
-            
-        search_query = f"\"{lead.name}\" official website company"
-        
-        async with self._resolution_semaphore:
-            results = await self.ddg_provider._safe_search(search_query, max_results=5)
-            
-        for r in results:
-            url = r.get("href", "")
-            if not url: continue
-            
-            domain = urlparse(url).netloc.lower()
-            if domain.startswith("www."):
-                domain = domain[4:]
-                
-            # Filter junk domains
-            is_junk = False
-            for junk in JUNK_DOMAINS:
-                if junk in domain:
-                    is_junk = True
-                    break
-                    
-            if is_junk:
-                logger.debug("Rejected junk domain during official resolution", extra={
-                    "company_name": lead.name,
-                    "rejected_domain": domain
-                })
-                continue
-            
-            logger.info("Resolved official website", extra={
-                "company_name": lead.name,
-                "original_url": lead.url,
-                "resolved_url": url,
-                "provider": lead.source_name,
-                "action": "resolve_official_website_success"
-            })
-            lead.url = url
-            lead.is_official_resolved = True
-            return lead
-            
-        logger.info("Failed to resolve official website", extra={
-            "company_name": lead.name,
-            "original_url": lead.url,
-            "action": "resolve_official_website_failed"
-        })
-        return lead
+    # _resolve_official_website has been moved to WebsiteResolver
         
     async def search_companies(self, job_role: str | None, location: str, work_mode: str, batch_size: int | None = None) -> list[CompanyLead]:
         limit = batch_size if batch_size is not None else self.max_results
@@ -222,10 +177,21 @@ class SearchPipeline:
         top_entities = resolved_entities[:limit * 2]
         
         # Phase 2: Resolve official websites concurrently for the canonical entities
-        resolve_tasks = [self._resolve_official_website(lead) for lead in top_entities]
+        from app.lead_discovery.website_resolver import WebsiteResolver
+        from app.lead_discovery.social_resolver import SocialResolver
+        
+        web_resolver = WebsiteResolver(min_confidence=40)
+        soc_resolver = SocialResolver(min_confidence=40)
+        
+        resolve_tasks = [web_resolver.resolve_website(lead) for lead in top_entities]
         resolved_leads = await asyncio.gather(*resolve_tasks, return_exceptions=True)
         
         valid_leads = [l for l in resolved_leads if isinstance(l, CompanyLead) and l.is_official_resolved]
+        
+        # Phase 2b: Resolve social profiles for valid leads
+        social_tasks = [soc_resolver.resolve_socials(lead) for lead in valid_leads]
+        final_valid_leads = await asyncio.gather(*social_tasks, return_exceptions=True)
+        valid_leads = [l for l in final_valid_leads if isinstance(l, CompanyLead)]
         
         final_leads = valid_leads[:limit]
         
@@ -234,6 +200,7 @@ class SearchPipeline:
                 "company_name": lead.name,
                 "provider_used": lead.source_name,
                 "resolved_official_domain": lead.url if lead.is_official_resolved else None,
+                "socials_resolved": list(lead.socials.keys()),
                 "raw_url": lead.url,
                 "ranking_reason": f"Score {lead.source_score} (Deduplicated Entity)",
                 "action": "company_selected"
@@ -242,6 +209,7 @@ class SearchPipeline:
         logger.info("Pipeline finished", extra={
             "total_discovered": len(all_leads), 
             "entities_resolved": len(resolved_entities),
+            "websites_resolved": len([l for l in valid_leads if l.is_official_resolved]),
             "returned": len(final_leads)
         })
         return final_leads
