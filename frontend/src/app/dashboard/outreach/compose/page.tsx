@@ -33,9 +33,9 @@ export default function ComposePage() {
 
     const fetchTemplates = async () => {
       try {
-        const data = await templatesApi.listTemplates()
+        const data = await templatesApi.list()
         setTemplates(data)
-      } catch (e) {
+      } catch {
         toast.error("Failed to load templates")
       }
     }
@@ -56,7 +56,7 @@ export default function ComposePage() {
       })
       setTaskId(res.task_id)
       toast.success("Bulk email queue started!")
-    } catch (e) {
+    } catch {
       toast.error("Failed to start email queue")
       setIsSubmitting(false)
     }
@@ -163,7 +163,7 @@ export default function ComposePage() {
       </div>
 
       <Dialog open={!!taskId} onOpenChange={(open) => !open && handleCloseDialog()}>
-        <DialogContent className="bg-zinc-950 border-zinc-800 text-white sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent className="bg-zinc-950 border-zinc-800 text-white sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Sending Emails</DialogTitle>
             <DialogDescription>
