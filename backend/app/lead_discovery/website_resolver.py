@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import re
 import asyncio
 from urllib.parse import urlparse
@@ -9,6 +9,9 @@ from app.ai.models import AIRequest, AIMessage
 from app.lead_discovery.search import CompanyLead, JUNK_DOMAINS
 from duckduckgo_search import DDGS
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+from app.core.cache import cached
+from app.lead_discovery.metrics import DiscoveryMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +62,8 @@ class WebsiteResolver:
             
         return score
 
-    async def resolve_website(self, lead: CompanyLead) -> CompanyLead:
+    @cached(prefix="website_resolution", ttl_seconds=86400 * 7, key_func=lambda self, lead, **kwargs: lead.name.lower())
+    async def resolve_website(self, lead: CompanyLead, metrics: DiscoveryMetrics | None = None) -> CompanyLead:
         search_query = f'"{lead.name}" official website company'
         
         @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -69,8 +73,12 @@ class WebsiteResolver:
 
         try:
             results = await asyncio.to_thread(do_search)
+            if metrics:
+                metrics.record_http_request(success=True)
         except Exception as e:
-            logger.error(f"DDG website search failed for {lead.name}: {e}")
+            if metrics:
+                metrics.record_http_request(success=False)
+            logger.warning(f"DDG website search failed gracefully for {lead.name}: {e}")
             return lead
 
         candidates = {}
@@ -108,12 +116,17 @@ class WebsiteResolver:
                 prompt += "Reply with exactly '1', '2', or '0' if neither is correct."
                 
                 req = AIRequest(
-                    messages=[AIMessage(role="user", content=prompt)],
-                    max_output_tokens=5,
+                    messages=[
+                        AIMessage(role="system", content="You are a data entry assistant helping to identify official websites. Output only the digit 1, 2, or 0. No other text."),
+                        AIMessage(role="user", content=prompt)
+                    ],
                     temperature=0.0
                 )
+                
                 try:
-                    resp = await self.ai_client.complete(req)
+                    if metrics:
+                        metrics.record_ai_invocation()
+                    resp = await asyncio.wait_for(self.ai_client.complete(req), timeout=10.0)
                     choice = resp.choices[0].message.content.strip()
                     logger.info("AI resolution result", extra={"company": lead.name, "choice": choice})
                     

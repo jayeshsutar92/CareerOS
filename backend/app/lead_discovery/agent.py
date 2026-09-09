@@ -15,6 +15,7 @@ from app.services.contact import ContactService
 from app.services.company import CompanyService
 from app.services.company_intelligence import CompanyIntelligenceService
 from app.services.email_personalization import EmailPersonalizationService
+from app.lead_discovery.metrics import DiscoveryMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class LeadDiscoveryAgent(BaseAgent):
     description = "Orchestrates discovering companies, extracting contacts, and drafting personalized emails."
 
     async def run(self, request: AgentRequest) -> dict[str, Any]:
+        metrics = DiscoveryMetrics()
         discovered_companies = []
         job_role = request.payload.get("job_role")
         if isinstance(job_role, str):
@@ -49,7 +51,8 @@ class LeadDiscoveryAgent(BaseAgent):
         )
         search_provider = get_job_search_provider()
         try:
-            leads = await search_provider.search_companies(job_role, location, work_mode, batch_size)
+            with metrics.measure_stage("company_search_and_resolution"):
+                leads = await search_provider.search_companies(job_role, location, work_mode, batch_size, metrics=metrics)
             logger.info("Company leads discovered", extra={"action": "leads_discovered", "count": len(leads)})
             if not leads:
                 return {
@@ -162,7 +165,8 @@ class LeadDiscoveryAgent(BaseAgent):
                 )
                 
                 try:
-                    contacts = await contact_service.discover_now(discovery_request)
+                    with metrics.measure_stage("contact_discovery"):
+                        contacts = await contact_service.discover_now(discovery_request, metrics=metrics)
                     logger.info("Discovery completed", extra={
                         "action": "discovery_completed",
                         "company_name": company_name,
@@ -244,6 +248,8 @@ class LeadDiscoveryAgent(BaseAgent):
             "processed_contact_ids": processed_contacts,
             "total_companies": len(discovered_companies)
         })
+        
+        metrics.emit_summary()
 
         # Clear active task if it is us
         from app.core.redis import get_redis_client

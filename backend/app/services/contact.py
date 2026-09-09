@@ -71,7 +71,7 @@ class ContactService:
             stored=len(contacts),
         )
 
-    async def discover_now(self, payload: ContactDiscoveryRequest, run_id: str | None = None, expected_token_version: int | None = None) -> list[Contact]:
+    async def discover_now(self, payload: ContactDiscoveryRequest, run_id: str | None = None, expected_token_version: int | None = None, metrics: Any = None) -> list[Contact]:
         from app.core.redis import get_redis_client
         from sqlalchemy import select
         from app.models.user import User
@@ -102,6 +102,7 @@ class ContactService:
                 pipeline.extract_contacts(
                     company_name=payload.company_name,
                     source_urls=[str(u) for u in payload.source_urls],
+                    metrics=metrics,
                 ),
                 timeout=WORKFLOW_TIMEOUT,
             )

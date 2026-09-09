@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import asyncio
 import re
 from urllib.parse import urlparse
@@ -17,6 +17,8 @@ from duckduckgo_search import DDGS
 
 from app.ai.client import get_ai_client
 from app.ai.models import AIRequest, AIMessage
+from app.core.cache import cached
+from app.lead_discovery.metrics import DiscoveryMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +67,7 @@ class SocialResolver:
             
         return score
 
-    async def _fallback_search(self, company_name: str, platform: str) -> str | None:
+    async def _fallback_search(self, company_name: str, platform: str, metrics: DiscoveryMetrics | None = None) -> str | None:
         query = f'"{company_name}" official {platform} page company'
         
         @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -75,8 +77,12 @@ class SocialResolver:
 
         try:
             results = await asyncio.to_thread(do_search)
+            if metrics:
+                metrics.record_http_request(success=True)
         except Exception as e:
-            logger.error(f"DDG fallback social search failed for {platform}: {e}")
+            if metrics:
+                metrics.record_http_request(success=False)
+            logger.warning(f"DDG fallback social search failed gracefully for {platform}: {e}")
             return None
 
         candidates = {}
@@ -121,7 +127,8 @@ class SocialResolver:
             return top["url"]
         return None
 
-    async def resolve_socials(self, lead: CompanyLead) -> CompanyLead:
+    @cached(prefix="social_resolution", ttl_seconds=86400 * 7, key_func=lambda self, lead, **kwargs: lead.url)
+    async def resolve_socials(self, lead: CompanyLead, metrics: DiscoveryMetrics | None = None) -> CompanyLead:
         if not lead.is_official_resolved or not lead.url:
             return lead
 
@@ -147,7 +154,7 @@ class SocialResolver:
         critical_platforms = ["linkedin", "twitter"]
         for platform in critical_platforms:
             if platform not in lead.socials:
-                url = await self._fallback_search(lead.name, platform)
+                url = await self._fallback_search(lead.name, platform, metrics)
                 if url:
                     lead.socials[platform] = url
                     logger.info(f"Resolved {platform} via fallback search", extra={"company_name": lead.name, "url": url, "action": "social_fallback_success"})

@@ -14,6 +14,7 @@ from app.ai.client import get_ai_client
 from app.ai.models import AIMessage, AIRequest
 from app.contact_discovery.normalizer import classify_role, normalize_whitespace
 from app.schemas.contact import ContactCandidate, ContactMethod
+from app.core.cache import cached
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class PublicContactFetcher:
     def __init__(self, timeout_seconds: float = 15.0) -> None:
         self.timeout_seconds = timeout_seconds
 
+    @cached(prefix="page_fetch", ttl_seconds=86400 * 3, key_func=lambda self, url, **kwargs: url)
     async def fetch(self, url: str) -> str:
         async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True, verify=False) as client:
             try:

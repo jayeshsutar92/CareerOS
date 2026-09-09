@@ -19,8 +19,10 @@ PROVIDER_TIMEOUT = 30.0         # Seconds per provider
 PIPELINE_TIMEOUT = 60.0         # Seconds for entire extraction pipeline
 LINKEDIN_MAX_RESULTS = 5        # Max LinkedIn search results to process
 
+from app.lead_discovery.metrics import DiscoveryMetrics
+
 class BaseContactExtractorProvider(Protocol):
-    async def extract_contacts(self, company_name: str, source_urls: list[str]) -> list[ContactCandidate]:
+    async def extract_contacts(self, company_name: str, source_urls: list[str], metrics: DiscoveryMetrics | None = None) -> list[ContactCandidate]:
         ...
 
 class WebsiteExtractorProvider:
@@ -28,7 +30,7 @@ class WebsiteExtractorProvider:
         self.fetcher = PublicContactFetcher(timeout_seconds=PER_PAGE_FETCH_TIMEOUT)
         self.extractor = PublicContactExtractor()
         
-    async def extract_contacts(self, company_name: str, source_urls: list[str]) -> list[ContactCandidate]:
+    async def extract_contacts(self, company_name: str, source_urls: list[str], metrics: DiscoveryMetrics | None = None) -> list[ContactCandidate]:
         all_candidates = []
         urls_processed = 0
         for source_url in source_urls:
@@ -45,14 +47,21 @@ class WebsiteExtractorProvider:
             
             async def fetch_path(p):
                 try:
-                    return await asyncio.wait_for(
+                    result = await asyncio.wait_for(
                         self.fetcher.fetch(base_url + p),
                         timeout=PER_PAGE_FETCH_TIMEOUT,
                     )
+                    if metrics:
+                        metrics.record_http_request(success=True)
+                    return result
                 except asyncio.TimeoutError:
+                    if metrics:
+                        metrics.record_http_request(success=False)
                     logger.warning("Page fetch timed out", extra={"action": "fetch_timeout", "url": base_url + p})
                     return ""
                 except Exception:
+                    if metrics:
+                        metrics.record_http_request(success=False)
                     return ""
             
             # Fetch pages concurrently
@@ -99,24 +108,32 @@ class LinkedInSearchExtractorProvider:
     def __init__(self):
         pass
         
-    async def _safe_search(self, query: str, max_results: int) -> list[dict[str, Any]]:
+    async def _safe_search(self, query: str, max_results: int, metrics: DiscoveryMetrics | None = None) -> list[dict[str, Any]]:
         @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
         def do_search():
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=max_results))
                 return results or []
         
-        return await asyncio.to_thread(do_search)
+        try:
+            results = await asyncio.to_thread(do_search)
+            if metrics:
+                metrics.record_http_request(success=True)
+            return results
+        except Exception as e:
+            if metrics:
+                metrics.record_http_request(success=False)
+            raise e
         
-    async def extract_contacts(self, company_name: str, source_urls: list[str]) -> list[ContactCandidate]:
+    async def extract_contacts(self, company_name: str, source_urls: list[str], metrics: DiscoveryMetrics | None = None) -> list[ContactCandidate]:
         candidates = []
         # We query duckduckgo for linkedin profiles related to the company
         query = f'site:linkedin.com/in "{company_name}" ("HR" OR "Recruiter" OR "Engineering Manager" OR "Talent Acquisition" OR "People Operations")'
         
         try:
-            results = await self._safe_search(query, max_results=LINKEDIN_MAX_RESULTS)
+            results = await self._safe_search(query, max_results=LINKEDIN_MAX_RESULTS, metrics=metrics)
         except Exception as e:
-            logger.error(f"LinkedIn snippet search failed for {company_name}: {e}")
+            logger.warning(f"LinkedIn snippet search failed gracefully for {company_name}: {e}")
             return []
             
         for r in results:
@@ -191,13 +208,13 @@ class ContactExtractionPipeline:
             LinkedInSearchExtractorProvider(),
         ]
         
-    async def extract_contacts(self, company_name: str, source_urls: list[str]) -> list[ContactCandidate]:
+    async def extract_contacts(self, company_name: str, source_urls: list[str], metrics: DiscoveryMetrics | None = None) -> list[ContactCandidate]:
         all_candidates = []
         for i, provider in enumerate(self.providers):
             provider_name = type(provider).__name__
             try:
                 result = await asyncio.wait_for(
-                    provider.extract_contacts(company_name, source_urls),
+                    provider.extract_contacts(company_name, source_urls, metrics=metrics),
                     timeout=PROVIDER_TIMEOUT,
                 )
                 all_candidates.extend(result)

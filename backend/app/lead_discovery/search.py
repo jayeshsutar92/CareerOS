@@ -153,7 +153,7 @@ class SearchPipeline:
         
     # _resolve_official_website has been moved to WebsiteResolver
         
-    async def search_companies(self, job_role: str | None, location: str, work_mode: str, batch_size: int | None = None) -> list[CompanyLead]:
+    async def search_companies(self, job_role: str | None, location: str, work_mode: str, batch_size: int | None = None, metrics: Any = None) -> list[CompanyLead]:
         limit = batch_size if batch_size is not None else self.max_results
         logger.info("Starting company search pipeline", extra={"job_role": job_role, "location": location, "work_mode": work_mode, "batch_size": limit})
         
@@ -183,13 +183,13 @@ class SearchPipeline:
         web_resolver = WebsiteResolver(min_confidence=40)
         soc_resolver = SocialResolver(min_confidence=40)
         
-        resolve_tasks = [web_resolver.resolve_website(lead) for lead in top_entities]
+        resolve_tasks = [web_resolver.resolve_website(lead, metrics=metrics) for lead in top_entities]
         resolved_leads = await asyncio.gather(*resolve_tasks, return_exceptions=True)
         
         valid_leads = [l for l in resolved_leads if isinstance(l, CompanyLead) and l.is_official_resolved]
         
         # Phase 2b: Resolve social profiles for valid leads
-        social_tasks = [soc_resolver.resolve_socials(lead) for lead in valid_leads]
+        social_tasks = [soc_resolver.resolve_socials(lead, metrics=metrics) for lead in valid_leads]
         final_valid_leads = await asyncio.gather(*social_tasks, return_exceptions=True)
         valid_leads = [l for l in final_valid_leads if isinstance(l, CompanyLead)]
         
