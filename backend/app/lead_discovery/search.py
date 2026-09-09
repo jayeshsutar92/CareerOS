@@ -5,7 +5,7 @@ import asyncio
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from ddgs import DDGS
+from duckduckgo_search import DDGS
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
@@ -213,41 +213,21 @@ class SearchPipeline:
             elif isinstance(res, Exception):
                 logger.error(f"Search provider failed: {res}")
                 
-        # Resolve official websites concurrently for those that need it
-        resolve_tasks = [self._resolve_official_website(lead) for lead in all_leads]
+        # Phase 1: Entity Resolution (Normalize, Score, Deduplicate BEFORE Website Resolution)
+        from app.lead_discovery.entity_resolver import EntityResolver
+        resolver = EntityResolver(min_confidence=40)
+        resolved_entities = resolver.resolve_entities(all_leads, location)
+        
+        # Take more than `limit` into Website Resolution to account for junk domain drops
+        top_entities = resolved_entities[:limit * 2]
+        
+        # Phase 2: Resolve official websites concurrently for the canonical entities
+        resolve_tasks = [self._resolve_official_website(lead) for lead in top_entities]
         resolved_leads = await asyncio.gather(*resolve_tasks, return_exceptions=True)
         
         valid_leads = [l for l in resolved_leads if isinstance(l, CompanyLead) and l.is_official_resolved]
         
-        # Deduplicate by normalized domain and sort by score
-        def normalize_domain(url: str) -> str:
-            try:
-                domain = urlparse(url).netloc.lower()
-                if domain.startswith("www."):
-                    domain = domain[4:]
-                    
-                # If we couldn't resolve or it's a known aggregator, use the raw URL to avoid deduplicating all aggregators together
-                for junk in JUNK_DOMAINS:
-                    if junk in domain:
-                        return url.lower()
-                        
-                return domain
-            except Exception:
-                return ""
-                
-        seen_domains = set()
-        deduped_leads = []
-        
-        # Sort by score first so we keep the highest scored version of a duplicate
-        valid_leads.sort(key=lambda x: x.source_score, reverse=True)
-        
-        for lead in valid_leads:
-            domain = normalize_domain(lead.url)
-            if domain and domain not in seen_domains:
-                seen_domains.add(domain)
-                deduped_leads.append(lead)
-                
-        final_leads = deduped_leads[:limit]
+        final_leads = valid_leads[:limit]
         
         for lead in final_leads:
             logger.info("Selected company for discovery", extra={
@@ -255,13 +235,13 @@ class SearchPipeline:
                 "provider_used": lead.source_name,
                 "resolved_official_domain": lead.url if lead.is_official_resolved else None,
                 "raw_url": lead.url,
-                "ranking_reason": f"Score {lead.source_score} (Deduplicated)",
+                "ranking_reason": f"Score {lead.source_score} (Deduplicated Entity)",
                 "action": "company_selected"
             })
             
         logger.info("Pipeline finished", extra={
             "total_discovered": len(all_leads), 
-            "deduplicated": len(deduped_leads), 
+            "entities_resolved": len(resolved_entities),
             "returned": len(final_leads)
         })
         return final_leads
