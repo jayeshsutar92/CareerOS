@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
@@ -30,6 +30,8 @@ class ContactCandidate(BaseModel):
     company_name: str = Field(min_length=1, max_length=255)
     contact_methods: list[ContactMethod] = Field(default_factory=list)
     source_url: HttpUrl
+    confidence_score: int = 0
+    discovery_evidence: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def require_public_method(self) -> "ContactCandidate":
@@ -51,6 +53,8 @@ class ContactRead(BaseModel):
     company_name: str
     contact_methods: list[ContactMethod]
     source_url: str
+    confidence_score: int
+    discovery_evidence: dict[str, Any]
     notes: str | None
     created_at: datetime
     updated_at: datetime

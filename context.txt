@@ -1,0 +1,86 @@
+# CareerOS Architectural Context
+
+## 1. Executive Summary
+CareerOS is an automated, AI-driven job application and outreach platform designed to identify high-fit opportunities and source decision-makers with high accuracy. The project has reached a level of maturity where the core infrastructure (frontend, backend, database, and background workers) is fully operational.
+
+**The Architectural Problem:** While the system infrastructure is solid, the core discovery engine—responsible for identifying companies, determining their official digital footprint (website and social profiles), and finding authentic HR/Recruiter emails—suffers from weak entity resolution, inconsistent accuracy, and an over-reliance on naive scraping methods. The goal is to design a highly accurate, verification-focused discovery architecture that integrates seamlessly into the existing robust backend.
+
+## 2. Current Architecture
+- **Frontend Architecture:** Next.js (App Router), React, TypeScript, Tailwind CSS, shadcn/ui components, with Zustand for global state management.
+- **Backend Architecture:** Python 3.12+, FastAPI, SQLAlchemy (async), and Pydantic for schema validation.
+- **Worker/Task System:** A custom, robust background worker queue built on Redis. It supports async tasks, retries, dead-letter queuing, delayed scheduling, and real-time progress polling from the frontend.
+- **Database:** PostgreSQL for persistent relational data storage (Users, Companies, Contacts, Emails, Templates, Resumes, Portfolios). Multi-tenant isolation is strictly enforced via `user_id` on all tables.
+- **Redis:** Used for rate limiting, caching, and serving as the broker/state store for the worker/task system.
+- **AI Workflow:** Integrations with LLMs (e.g., Gemini/OpenAI) using structured JSON parsing to synthesize intelligence from scraped data and generate highly personalized outreach content.
+- **Discovery Pipeline:** Python-based services that orchestrate external search engine queries and web scrapers to gather leads and contacts.
+
+## 3. Current Discovery Workflow
+The pipeline operates as follows today:
+1. **Company Discovery:** The user inputs a Job Role, City, and Work Mode. The backend performs search queries to discover companies currently hiring for those parameters.
+2. **Company Intelligence:** Background tasks crawl the discovered company's website (if found), extracting the "About" page, tech stack, and general context to generate an AI-summarized profile.
+3. **Contact Discovery:** Background workers scan websites and external sources to locate individual contacts (names, roles, emails) categorized as HR, Recruiters, or Hiring Managers.
+4. **HR Email Extraction:** Basic pattern matching and heuristic filtering are used to extract emails while attempting to filter out generic mailboxes (e.g., info@, sales@).
+5. **Outreach Preparation:** Users select validated contacts, apply an email template, and initiate a bulk email queue where placeholders are resolved using the aggregated company and contact data.
+
+## 4. Current Implementation Details
+- **Companies:** Discovered via generic search APIs based on the initial query parameters.
+- **Official Websites:** Identified primarily from the top result of a search query matching the company name.
+- **Careers Pages:** Located by crawling the root domain and looking for links containing keywords like "careers", "jobs", or "about".
+- **Contacts:** Extracted by parsing text on identified corporate pages and attempting to match names with roles.
+- **Emails:** Extracted using regex scanning over the scraped HTML content.
+- **Social Profiles:** The system attempts to find them via basic keyword searches (e.g., "Company Name LinkedIn"), but struggles to confidently distinguish between the official page, a similarly named entity, or an employee's personal profile.
+
+## 5. Completed Work
+Do not propose rebuilding the following components; they are already successfully implemented:
+- A resilient background task worker architecture with retry/failure handling and live progress polling.
+- Multi-tenant data isolation and role-based data models.
+- The user interface, dashboards, and frontend state management.
+- The bulk email queuing and processing mechanism.
+- The AI context aggregation engine used for email personalization.
+
+## 6. Current Bottlenecks
+The discovery engine currently faces several major limitations:
+- **Weak Entity Resolution:** Inability to confidently determine which public profiles or domains actually belong to the discovered company versus a similarly named entity.
+- **Incorrect Official Website Selection:** Often associates the wrong domain (e.g., directory listings, aggregators, or identical names in different industries) with a business.
+- **Failed Social Identity Resolution:** Cannot reliably identify the official LinkedIn, Facebook, Instagram, X (Twitter), YouTube, or other social media profiles belonging to the specific company.
+- **Reliance on Generic Search:** Over-reliance on basic search engine results without cross-verification mechanisms.
+- **Inconsistent HR/Recruiter Email Discovery:** Relying on basic website scraping misses many legitimate contacts and frequently hallucinates or extracts invalid contacts.
+- **Rate Limiting (403/429):** Search engines and domains frequently block or rate-limit the naive scraping mechanisms.
+- **Workflow Reliability:** Lack of a deterministic, high-confidence fallback strategy when initial resolution steps fail.
+
+## 7. Non-Goals
+The following actions should NOT be taken:
+- Do not redesign the entire backend architecture.
+- Do not replace FastAPI, PostgreSQL, Redis, or the custom worker system.
+- Do not redesign the frontend application.
+- Preserve existing API contracts and data models wherever practical.
+- Prefer upgrading and refactoring existing modules rather than suggesting a ground-up rewrite.
+
+## 8. Desired Production Workflow
+The target pipeline must operate with high confidence. **Accuracy is significantly more important than quantity.**
+
+**Workflow:**
+1. Search Input: Job Role + City + Work Mode
+2. Discover companies hiring
+3. Resolve official company identity
+4. Resolve official website
+5. Resolve official LinkedIn, Facebook, Instagram, X, and YouTube profiles
+6. Locate specific Careers/Jobs pages
+7. Identify verified HR/Recruiter/Talent Acquisition contacts
+8. Extract verified public email addresses
+9. Return structured contacts with confidence scores and transparent source URLs
+10. Ready for Outreach
+
+## 9. Final Task for Claude
+Based on the architectural context provided above, please execute the following:
+- Review the current discovery architecture.
+- Identify the exact architectural weaknesses in the discovery pipeline.
+- Explain *why* these weaknesses and bottlenecks occur.
+- Propose a production-ready discovery pipeline design.
+- Recommend specific technical improvements, algorithms, or external services for:
+  - High-confidence company and official website resolution.
+  - Official social profile discovery (LinkedIn, Facebook, X, etc.).
+  - Authentic HR/Recruiter contact discovery.
+  - Public email discovery and verification.
+- Explain the trade-offs for every major design decision proposed.
+- Ensure your proposed design preserves the existing FastAPI/PostgreSQL/Redis/Worker architecture wherever practical, rather than proposing a complete system rewrite.

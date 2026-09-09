@@ -67,6 +67,29 @@ class WebsiteExtractorProvider:
                 source_url=str(source_url),
                 company_name=company_name,
             )
+            
+            # Compute confidence score
+            for c in candidates:
+                score = 0
+                role_cat = classify_role(c.role)
+                if role_cat in ["hr", "recruiter", "talent_acquisition"]:
+                    score += 50
+                elif role_cat == "hiring_manager":
+                    score += 30
+                else:
+                    score += 10
+                    
+                src_lower = str(c.source_url).lower()
+                if "careers" in src_lower or "jobs" in src_lower:
+                    score += 40
+                elif "contact" in src_lower:
+                    score += 35
+                elif "about" in src_lower or "team" in src_lower:
+                    score += 30
+                    
+                c.confidence_score = score
+                c.discovery_evidence["provider"] = "WebsiteExtractor"
+            
             logger.info("Source analyzed", extra={"action": "source_analyzed", "source": source_url, "candidates_found": len(candidates), "pages_fetched": len(paths)})
             all_candidates.extend(candidates)
             
@@ -134,6 +157,17 @@ class LinkedInSearchExtractorProvider:
                 else:
                     continue
                     
+            score = 0
+            role_category = classify_role(role)
+            if role_category in ["hr", "recruiter", "talent_acquisition"]:
+                score += 50
+            elif role_category == "hiring_manager":
+                score += 30
+            else:
+                score += 10
+                
+            score += 30 # LinkedIn source bonus
+            
             candidates.append(ContactCandidate(
                 name=normalize_whitespace(name),
                 role=normalize_whitespace(role),
@@ -142,7 +176,9 @@ class LinkedInSearchExtractorProvider:
                 contact_methods=[
                     ContactMethod(type="linkedin", value=url.rstrip('/')),
                     ContactMethod(type="source_page", value="Google/DDG: LinkedIn Snippet")
-                ]
+                ],
+                confidence_score=score,
+                discovery_evidence={"provider": "LinkedInSearch", "extraction_method": "snippet_parsing"}
             ))
             
         logger.info("Source analyzed", extra={"action": "source_analyzed", "source": "LinkedIn Search", "candidates_found": len(candidates)})

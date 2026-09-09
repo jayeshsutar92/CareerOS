@@ -119,6 +119,10 @@ class ContactService:
         logger.info("Contacts extracted", extra={"action": "contacts_extracted", "count": len(candidates), "company_name": payload.company_name})
         
         for candidate in candidates:
+            if candidate.confidence_score < 40:
+                logger.debug("Skipping low confidence candidate", extra={"action": "contact_skipped_low_confidence", "name": candidate.name, "score": candidate.confidence_score})
+                continue
+                
             try:
                 stored_contacts.append(await self.upsert_candidate(candidate, payload.company_id))
             except HTTPException:
@@ -144,9 +148,13 @@ class ContactService:
         contact_methods = normalize_contact_methods(candidate.contact_methods)
 
         if existing is not None:
+            # Merge evidence and keep highest score
+            if candidate.confidence_score > existing.confidence_score:
+                existing.confidence_score = candidate.confidence_score
+                existing.source_url = str(candidate.source_url)
+                existing.discovery_evidence = candidate.discovery_evidence
             existing.contact_methods = contact_methods
-            existing.source_url = str(candidate.source_url)
-            logger.info("Contacts deduplicated", extra={"action": "contacts_deduplicated", "dedupe_key": dedupe_key})
+            logger.info("Contacts deduplicated", extra={"action": "contacts_deduplicated", "dedupe_key": dedupe_key, "new_score": existing.confidence_score})
             return await self.repository.commit_and_refresh(existing)
 
         contact = Contact(
@@ -158,6 +166,8 @@ class ContactService:
             company_name=normalize_whitespace(candidate.company_name),
             contact_methods=contact_methods,
             source_url=str(candidate.source_url),
+            confidence_score=candidate.confidence_score,
+            discovery_evidence=candidate.discovery_evidence,
             dedupe_key=dedupe_key,
         )
         new_contact = await self.repository.create(contact)

@@ -218,6 +218,7 @@ class PublicContactExtractor:
                     company_name=company_name,
                     contact_methods=[ContactMethod(type="source_page", value=source_url)],
                     source_url=source_url,
+                    discovery_evidence={"extraction_method": "regex"},
                 )
             )
 
@@ -284,6 +285,7 @@ class PublicContactExtractor:
                                 company_name=company_name,
                                 contact_methods=[ContactMethod(type="source_page", value=source_url)],
                                 source_url=source_url,
+                                discovery_evidence={"extraction_method": "html_structure"},
                             )
                         )
                     break
@@ -478,6 +480,7 @@ class PublicContactExtractor:
                             company_name=company_name,
                             contact_methods=[ContactMethod(type="source_page", value=source_url)],
                             source_url=source_url,
+                            discovery_evidence={"extraction_method": "ai"},
                         )
                     )
 

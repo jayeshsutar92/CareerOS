@@ -175,84 +175,22 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 company_contacts = []
                 comp_score = 0
-                best_contact_by_email = {}
                 
                 for contact in contacts:
-                    # Calculate confidence score
-                    confidence = 0
-                    role_cat = contact.role_category
-                    if role_cat in ["hr", "recruiter", "talent_acquisition"]:
-                        confidence += 50
-                    elif role_cat == "hiring_manager":
-                        confidence += 30
-                    else:
-                        confidence += 10
-                    
-                    # Source reliability
-                    source_url_lower = (contact.source_url or "").lower()
-                    if "careers" in source_url_lower or "jobs" in source_url_lower:
-                        confidence += 40
-                    elif "contact" in source_url_lower:
-                        confidence += 35
-                    elif "linkedin.com" in source_url_lower:
-                        confidence += 30
-                    elif "naukri.com" in source_url_lower:
-                        confidence += 20
-                    elif "indeed.com" in source_url_lower:
-                        confidence += 15
-                    else:
-                        confidence += 5 # Fallback directory or unknown
-                    
-                    # Contact methods
-                    methods = []
-                    email_address = None
-                    for cm in (contact.contact_methods or []):
-                        if hasattr(cm, "model_dump"):
-                            method_dict = cm.model_dump()
-                        elif isinstance(cm, dict):
-                            method_dict = cm
-                        else:
-                            continue
-                        methods.append(method_dict)
-                        if method_dict.get("type") == "email":
-                            email_address = method_dict.get("value")
-                            
-                    has_email = bool(email_address)
-                    if has_email:
-                        confidence += 50
-
-                    confidence = min(confidence, 100)
-                    
                     contact_dict = {
                         "id": str(contact.id),
                         "name": contact.name,
                         "role": contact.role,
                         "role_category": contact.role_category,
-                        "confidence_score": confidence,
+                        "confidence_score": contact.confidence_score,
                         "source_url": contact.source_url,
-                        "contact_methods": methods
+                        "contact_methods": contact.contact_methods,
+                        "discovery_evidence": contact.discovery_evidence
                     }
-                    
-                    if has_email and email_address:
-                        email_address = email_address.lower().strip()
-                        if email_address in best_contact_by_email:
-                            existing = best_contact_by_email[email_address]
-                            if confidence > existing["confidence_score"]:
-                                best_contact_by_email[email_address] = contact_dict
-                                logger.info("Contact deduplicated: kept higher confidence", extra={"action": "contact_deduplicated", "email": email_address, "kept_score": confidence, "dropped_score": existing["confidence_score"]})
-                            else:
-                                logger.info("Contact deduplicated: dropped lower confidence", extra={"action": "contact_deduplicated", "email": email_address, "dropped_score": confidence, "kept_score": existing["confidence_score"]})
-                        else:
-                            best_contact_by_email[email_address] = contact_dict
-                    else:
-                        company_contacts.append(contact_dict)
-                        
-                company_contacts.extend(best_contact_by_email.values())
-                
-                for c in company_contacts:
-                    comp_score += c["confidence_score"]
+                    company_contacts.append(contact_dict)
+                    comp_score += contact.confidence_score
                     total_contacts_discovered += 1
-                    processed_contacts.append(c["id"])
+                    processed_contacts.append(contact_dict["id"])
                 
                 # Sort contacts by confidence
                 company_contacts.sort(key=lambda x: x["confidence_score"], reverse=True)

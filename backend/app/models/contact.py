@@ -38,6 +38,8 @@ class Contact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         JSON, nullable=False, default=list
     )
     source_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    confidence_score: Mapped[int] = mapped_column(nullable=False, server_default="0")
+    discovery_evidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     dedupe_key: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
