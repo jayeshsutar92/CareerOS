@@ -174,10 +174,8 @@ class LeadDiscoveryAgent(BaseAgent):
                     contacts = []
                 
                 company_contacts = []
-                comp_score = 0
-                
                 for contact in contacts:
-                    contact_dict = {
+                    company_contacts.append({
                         "id": str(contact.id),
                         "name": contact.name,
                         "role": contact.role,
@@ -186,22 +184,16 @@ class LeadDiscoveryAgent(BaseAgent):
                         "source_url": contact.source_url,
                         "contact_methods": contact.contact_methods,
                         "discovery_evidence": contact.discovery_evidence
-                    }
-                    company_contacts.append(contact_dict)
-                    comp_score += contact.confidence_score
+                    })
                     total_contacts_discovered += 1
-                    processed_contacts.append(contact_dict["id"])
+                    processed_contacts.append(str(contact.id))
+                    
+                # Phase 4: Verification & Confidence
+                from app.lead_discovery.verification import VerificationStage
+                verification_stage = VerificationStage()
+                verified_company = verification_stage.verify(lead, company_contacts)
                 
-                # Sort contacts by confidence
-                company_contacts.sort(key=lambda x: x["confidence_score"], reverse=True)
-
-                discovered_companies.append({
-                    "name": company_name,
-                    "url": url,
-                    "contacts_count": len(contacts) if contacts else 0,
-                    "contacts": company_contacts,
-                    "company_score": comp_score
-                })
+                discovered_companies.append(verified_company)
 
                 # 4. Email Personalization for extracted contacts
                 import asyncio
@@ -234,7 +226,7 @@ class LeadDiscoveryAgent(BaseAgent):
                             logger.error(f"Failed to generate email for contact {contact_dict['id']}: {e}", extra={"action": "email_draft_failed", "error": str(e)})
                             return False
 
-                draft_tasks = [generate_draft(c) for c in company_contacts]
+                draft_tasks = [generate_draft(c) for c in verified_company["verified_contacts"]]
                 results = await asyncio.gather(*draft_tasks, return_exceptions=True)
                 for res in results:
                     if isinstance(res, bool) and res:
