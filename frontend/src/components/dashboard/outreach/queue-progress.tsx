@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { api } from "@/lib/api/client"
+import { api } from "@/services/api"
 import { Loader2, CheckCircle, XCircle } from "lucide-react"
 
 interface QueueProgressProps {
@@ -19,7 +19,7 @@ interface TaskProgress {
 interface TaskStatusResponse {
   status: string
   error?: string
-  result?: any
+  result?: Record<string, unknown>
   progress?: TaskProgress
 }
 
@@ -69,9 +69,9 @@ export function QueueProgress({ taskId, onComplete }: QueueProgressProps) {
   }
 
   if (status.status === "succeeded") {
-    const total = status.result?.total || (p ? p.total : 0)
-    const failed = status.result?.failed || (p ? p.failed : 0)
-    const completed = status.result?.completed || (p ? p.completed : 0)
+    const total = (status.result?.total as number) || (p ? p.total : 0)
+    const failed = (status.result?.failed as number) || (p ? p.failed : 0)
+    const completed = (status.result?.completed as number) || (p ? p.completed : 0)
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-green-400">
