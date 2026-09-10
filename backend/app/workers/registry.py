@@ -1,13 +1,6 @@
 from __future__ import annotations
 
 from app.workers.base import WorkerTask
-from app.workers.tasks.agent_execution import AgentExecutionTask
-from app.workers.tasks.analysis import CompanyAnalysisTask
-from app.workers.tasks.business_sync import BusinessSyncTask
-from app.workers.tasks.cleanup import CleanupTask
-from app.workers.tasks.bulk_email import BulkEmailWorker
-
-
 class TaskRegistry:
     def __init__(self) -> None:
         self._tasks: dict[str, WorkerTask] = {}
@@ -29,10 +22,4 @@ class TaskRegistry:
     def names(self) -> list[str]:
         return sorted(self._tasks)
 
-
 task_registry = TaskRegistry()
-task_registry.register(AgentExecutionTask())
-task_registry.register(CompanyAnalysisTask())
-task_registry.register(CleanupTask())
-task_registry.register(BusinessSyncTask())
-task_registry.register(BulkEmailWorker())

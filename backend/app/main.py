@@ -11,7 +11,7 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.redis import close_redis_client, ping_redis
-from app.db.session import SessionLocal
+from app.db.session import AsyncSessionLocal
 from app.services.template import TemplateService
 from fastapi.middleware.cors import CORSMiddleware
 
