@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.workers.base import WorkerTask
+
 class TaskRegistry:
     def __init__(self) -> None:
         self._tasks: dict[str, WorkerTask] = {}
