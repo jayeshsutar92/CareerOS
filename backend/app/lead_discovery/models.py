@@ -89,3 +89,34 @@ class CanonicalCompanyEntity:
             valid_names = self.evidence
         best = max(valid_names, key=lambda e: (e.confidence, len(e.original_name)))
         return best.original_name
+
+@dataclass
+class ExtractedEvidence:
+    evidence_type: str
+    value: str
+    source_urls: list[str] = field(default_factory=list)
+    methods: list[str] = field(default_factory=list)
+    first_seen: float = 0.0
+
+@dataclass
+class EvidenceCollection:
+    canonical_id: str
+    evidence: list[ExtractedEvidence] = field(default_factory=list)
+    
+    def add_evidence(self, ev_type: str, value: str, source_url: str, method: str) -> None:
+        if not value: return
+        import time
+        for ev in self.evidence:
+            if ev.evidence_type == ev_type and ev.value == value:
+                if source_url not in ev.source_urls:
+                    ev.source_urls.append(source_url)
+                if method not in ev.methods:
+                    ev.methods.append(method)
+                return
+        self.evidence.append(ExtractedEvidence(
+            evidence_type=ev_type,
+            value=value,
+            source_urls=[source_url],
+            methods=[method],
+            first_seen=time.time()
+        ))

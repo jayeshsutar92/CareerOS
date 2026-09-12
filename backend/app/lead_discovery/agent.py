@@ -74,10 +74,23 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 valid_entities = [e for e in resolved_entities_with_web if isinstance(e, CanonicalCompanyEntity) and e.website_evidence and e.website_evidence.selected_url]
                 
+                # Phase 4: Evidence Collection
+                from app.lead_discovery.evidence_collector import EvidenceCollector
+                evidence_collector = EvidenceCollector()
+                
+                evidence_tasks = [evidence_collector.collect(entity, metrics=metrics) for entity in valid_entities]
+                collected_evidences = await asyncio.gather(*evidence_tasks, return_exceptions=True)
+                
+                # Zip the successful evidence collections back to the entities
+                valid_entities_with_evidence = []
+                for entity, ev_result in zip(valid_entities, collected_evidences):
+                    if not isinstance(ev_result, Exception):
+                        valid_entities_with_evidence.append((entity, ev_result))
+                
                 # --- BACKWARD COMPATIBILITY ADAPTER ---
                 # Convert CanonicalCompanyEntity to legacy CompanyLead to feed downstream SocialResolver
                 legacy_leads = []
-                for entity in valid_entities:
+                for entity, ev_dict in valid_entities_with_evidence:
                     provider = " | ".join(list(set(e.provider for e in entity.evidence)))
                     
                     lead = CompanyLead(
@@ -91,9 +104,13 @@ class LeadDiscoveryAgent(BaseAgent):
                     lead.resolution_evidence["website_candidates"] = [c.url for c in entity.website_evidence.candidate_set.get_ranked_valid_candidates()][:3]
                     if entity.website_evidence.ai_arbitration_used:
                         lead.resolution_evidence["website_ai_adj"] = "ai_arbitrated"
+                        
+                    # Inject collected evidence into the legacy lead so downstream can consume it
+                    lead.resolution_evidence["collected_evidence"] = ev_dict
+                    
                     legacy_leads.append(lead)
                 
-                # Phase 3b: Resolve social profiles
+                # Phase 4b (Legacy Phase 3b): Resolve social profiles
                 from app.lead_discovery.social_resolver import SocialResolver
                 soc_resolver = SocialResolver(min_confidence=40)
                 social_tasks = [soc_resolver.resolve_socials(lead, metrics=metrics) for lead in legacy_leads]

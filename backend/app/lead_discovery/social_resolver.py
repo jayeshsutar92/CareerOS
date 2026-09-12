@@ -133,19 +133,37 @@ class SocialResolver:
             return lead
 
         extracted_socials = {}
-        # 1. Fetch official website to extract socials natively
-        try:
-            html, _ = await self.fetcher.fetch_page(lead.url)
-            extracted_socials = self._extract_from_html(html)
-            logger.info("Extracted social profiles directly from website", extra={
-                "company_name": lead.name,
-                "found_platforms": list(extracted_socials.keys()),
-                "action": "social_extraction_success"
-            })
-            lead.resolution_evidence["socials_from_html"] = list(extracted_socials.keys())
-        except Exception as e:
-            logger.warning(f"Failed to fetch {lead.url} for social extraction: {e}")
-            lead.resolution_evidence["social_html_error"] = str(e)
+        
+        # 1. Use pre-collected evidence from Phase 4 if available
+        collected_ev = lead.resolution_evidence.get("collected_evidence")
+        if collected_ev and "evidence" in collected_ev:
+            for ev in collected_ev["evidence"]:
+                if ev["evidence_type"].startswith("social_profile_"):
+                    platform = ev["evidence_type"].replace("social_profile_", "")
+                    extracted_socials[platform] = ev["value"]
+                    
+            if extracted_socials:
+                logger.info("Consumed pre-collected social profiles", extra={
+                    "company_name": lead.name,
+                    "found_platforms": list(extracted_socials.keys()),
+                    "action": "social_extraction_from_evidence"
+                })
+                lead.resolution_evidence["socials_from_evidence"] = list(extracted_socials.keys())
+                
+        # 2. Fetch official website to extract socials natively if no evidence was provided
+        if not extracted_socials and not collected_ev:
+            try:
+                html, _ = await self.fetcher.fetch_page(lead.url)
+                extracted_socials = self._extract_from_html(html)
+                logger.info("Extracted social profiles directly from website", extra={
+                    "company_name": lead.name,
+                    "found_platforms": list(extracted_socials.keys()),
+                    "action": "social_extraction_success"
+                })
+                lead.resolution_evidence["socials_from_html"] = list(extracted_socials.keys())
+            except Exception as e:
+                logger.warning(f"Failed to fetch {lead.url} for social extraction: {e}")
+                lead.resolution_evidence["social_html_error"] = str(e)
             
         for platform, url in extracted_socials.items():
             lead.socials[platform] = url
