@@ -63,39 +63,40 @@ class LeadDiscoveryAgent(BaseAgent):
                 resolver = EntityResolver(min_confidence=40)
                 resolved_entities = resolver.resolve_entities(candidate_set, location)
                 
+                top_entities = resolved_entities[:batch_size * 2] if batch_size else resolved_entities
+                
+                # Phase 3: Website Candidate Resolution
+                from app.lead_discovery.website_resolver import WebsiteResolver
+                web_resolver = WebsiteResolver(min_confidence=40)
+                
+                resolve_tasks = [web_resolver.resolve_website(entity, metrics=metrics) for entity in top_entities]
+                resolved_entities_with_web = await asyncio.gather(*resolve_tasks, return_exceptions=True)
+                
+                valid_entities = [e for e in resolved_entities_with_web if isinstance(e, CanonicalCompanyEntity) and e.website_evidence and e.website_evidence.selected_url]
+                
                 # --- BACKWARD COMPATIBILITY ADAPTER ---
-                # Convert the CanonicalCompanyEntity objects to legacy CompanyLead to feed downstream resolvers
+                # Convert CanonicalCompanyEntity to legacy CompanyLead to feed downstream SocialResolver
                 legacy_leads = []
-                for entity in resolved_entities:
-                    best_name = entity.best_original_name
-                    top_evidence = max(entity.evidence, key=lambda e: e.confidence) if entity.evidence else None
-                    url = top_evidence.source_url if top_evidence else ""
+                for entity in valid_entities:
                     provider = " | ".join(list(set(e.provider for e in entity.evidence)))
                     
-                    legacy_leads.append(CompanyLead(
-                        name=best_name,
-                        url=url,
+                    lead = CompanyLead(
+                        name=entity.best_original_name,
+                        url=entity.website_evidence.selected_url,
                         source_score=entity.aggregate_score,
                         source_name=provider,
-                        is_official_resolved=False
-                    ))
+                        is_official_resolved=True
+                    )
+                    lead.website_confidence = entity.website_evidence.confidence
+                    lead.resolution_evidence["website_candidates"] = [c.url for c in entity.website_evidence.candidate_set.get_ranked_valid_candidates()][:3]
+                    if entity.website_evidence.ai_arbitration_used:
+                        lead.resolution_evidence["website_ai_adj"] = "ai_arbitrated"
+                    legacy_leads.append(lead)
                 
-                top_entities = legacy_leads[:batch_size * 2] if batch_size else legacy_leads
-                
-                # Phase 2: Resolve official websites
-                from app.lead_discovery.website_resolver import WebsiteResolver
+                # Phase 3b: Resolve social profiles
                 from app.lead_discovery.social_resolver import SocialResolver
-                
-                web_resolver = WebsiteResolver(min_confidence=40)
                 soc_resolver = SocialResolver(min_confidence=40)
-                
-                resolve_tasks = [web_resolver.resolve_website(lead, metrics=metrics) for lead in top_entities]
-                resolved_leads = await asyncio.gather(*resolve_tasks, return_exceptions=True)
-                
-                valid_leads = [l for l in resolved_leads if isinstance(l, CompanyLead) and l.is_official_resolved]
-                
-                # Phase 2b: Resolve social profiles
-                social_tasks = [soc_resolver.resolve_socials(lead, metrics=metrics) for lead in valid_leads]
+                social_tasks = [soc_resolver.resolve_socials(lead, metrics=metrics) for lead in legacy_leads]
                 final_valid_leads = await asyncio.gather(*social_tasks, return_exceptions=True)
                 
                 leads = [l for l in final_valid_leads if isinstance(l, CompanyLead)][:batch_size]

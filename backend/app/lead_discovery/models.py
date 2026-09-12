@@ -46,10 +46,35 @@ class CompanyCandidateSet:
         return sorted(self.candidates, key=lambda c: c.aggregate_confidence, reverse=True)
 
 @dataclass
+class WebsiteCandidate:
+    domain: str
+    url: str
+    score: int
+    source: str
+    is_rejected: bool = False
+    rejection_reason: str = ""
+    evidence_signals: list[str] = field(default_factory=list)
+
+@dataclass
+class WebsiteCandidateSet:
+    candidates: list[WebsiteCandidate] = field(default_factory=list)
+    
+    def get_ranked_valid_candidates(self) -> list[WebsiteCandidate]:
+        return sorted([c for c in self.candidates if not c.is_rejected], key=lambda x: x.score, reverse=True)
+
+@dataclass
+class WebsiteResolutionEvidence:
+    selected_url: str
+    confidence: int
+    candidate_set: WebsiteCandidateSet
+    ai_arbitration_used: bool = False
+
+@dataclass
 class CanonicalCompanyEntity:
     canonical_id: str
     normalized_name: str
     evidence: list[DiscoveryEvidence] = field(default_factory=list)
+    website_evidence: WebsiteResolutionEvidence | None = None
     
     @property
     def aggregate_score(self) -> int:

@@ -6,7 +6,8 @@ from typing import Any
 
 from app.ai.client import get_ai_client
 from app.ai.models import AIRequest, AIMessage
-from app.lead_discovery.search import CompanyLead, JUNK_DOMAINS
+from app.lead_discovery.search import JUNK_DOMAINS
+from app.lead_discovery.models import CanonicalCompanyEntity, WebsiteCandidate, WebsiteCandidateSet, WebsiteResolutionEvidence
 from duckduckgo_search import DDGS
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -62,9 +63,9 @@ class WebsiteResolver:
             
         return score
 
-    @cached(prefix="website_resolution", ttl_seconds=86400 * 7, key_func=lambda self, lead, **kwargs: lead.name.lower())
-    async def resolve_website(self, lead: CompanyLead, metrics: DiscoveryMetrics | None = None) -> CompanyLead:
-        search_query = f'"{lead.name}" official website company'
+    @cached(prefix="website_resolution_phase3", ttl_seconds=86400 * 7, key_func=lambda self, entity, **kwargs: entity.normalized_name)
+    async def resolve_website(self, entity: CanonicalCompanyEntity, metrics: DiscoveryMetrics | None = None) -> CanonicalCompanyEntity:
+        search_query = f'"{entity.best_original_name}" official website company'
         
         @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
         def do_search():
@@ -78,41 +79,71 @@ class WebsiteResolver:
         except Exception as e:
             if metrics:
                 metrics.record_http_request(success=False)
-            logger.warning(f"DDG website search failed gracefully for {lead.name}: {e}")
-            return lead
+            logger.warning(f"DDG website search failed gracefully for {entity.normalized_name}: {e}")
+            results = []
 
-        candidates = {}
+        candidate_set = WebsiteCandidateSet()
+        
+        # 1. Evaluate Search Engine Results
         for rank, r in enumerate(results):
             url = r.get("href", "")
             if not url: continue
             
             domain = self._normalize_domain(url)
-            if not domain or self._is_junk(domain):
-                logger.debug("Rejected junk domain", extra={"company_name": lead.name, "rejected_domain": domain})
+            if not domain: continue
+            
+            if self._is_junk(domain):
+                candidate_set.candidates.append(WebsiteCandidate(
+                    domain=domain, url=url, score=0, source="DDG",
+                    is_rejected=True, rejection_reason="Junk domain match"
+                ))
                 continue
                 
-            if domain not in candidates:
-                score = self._deterministic_score(domain, lead.name, rank)
-                candidates[domain] = {"url": url, "score": score, "title": r.get("title", ""), "body": r.get("body", ""), "rank": rank}
-
-        if not candidates:
-            logger.info("No valid website candidates found", extra={"company": lead.name, "action": "website_resolution_failed"})
-            lead.resolution_evidence["website_rejection_reason"] = "No valid non-junk candidates"
-            return lead
-
-        # Sort by score descending
-        sorted_cands = sorted(candidates.values(), key=lambda x: x["score"], reverse=True)
-        top = sorted_cands[0]
-        
-        # AI Tie breaking logic
-        if len(sorted_cands) > 1:
-            runner_up = sorted_cands[1]
-            if top["score"] >= self.min_confidence and (top["score"] - runner_up["score"]) < 15:
-                logger.info("Website resolution ambiguous, invoking AI", extra={"company": lead.name, "top": top["url"], "runner_up": runner_up["url"]})
+            score = self._deterministic_score(domain, entity.best_original_name, rank)
+            evidence = ["Search Match"]
+            
+            # Check title for company name match
+            if entity.normalized_name in r.get("title", "").lower() or entity.normalized_name in r.get("body", "").lower():
+                score += 15
+                evidence.append("Name in Meta")
                 
-                prompt = f"Which of these two domains is the official website for the company '{lead.name}'?\n"
-                prompt += f"1. {top['url']} - {top['title']}\n{top['body']}\n\n"
-                prompt += f"2. {runner_up['url']} - {runner_up['title']}\n{runner_up['body']}\n\n"
+            candidate_set.candidates.append(WebsiteCandidate(
+                domain=domain, url=url, score=score, source="DDG",
+                evidence_signals=evidence
+            ))
+            
+        # 2. Add candidates from Phase 1 Evidence (ATS, LinkedIn profiles sometimes have URLs)
+        for ev in entity.evidence:
+            domain = self._normalize_domain(ev.source_url)
+            if not domain or self._is_junk(domain): continue
+            
+            score = self._deterministic_score(domain, entity.best_original_name, 5) # Default rank 5
+            score += 10 # Bonus for being in discovery evidence
+            candidate_set.candidates.append(WebsiteCandidate(
+                domain=domain, url=ev.source_url, score=score, source=f"Evidence: {ev.provider}",
+                evidence_signals=["Discovery Evidence"]
+            ))
+
+        ranked_candidates = candidate_set.get_ranked_valid_candidates()
+        
+        if not ranked_candidates:
+            logger.info("No valid website candidates found", extra={"company": entity.normalized_name, "action": "website_resolution_failed"})
+            entity.website_evidence = WebsiteResolutionEvidence(selected_url="", confidence=0, candidate_set=candidate_set)
+            return entity
+
+        top = ranked_candidates[0]
+        ai_used = False
+        
+        # 3. AI Arbitration for Ties
+        if len(ranked_candidates) > 1:
+            runner_up = ranked_candidates[1]
+            if top.score >= self.min_confidence and (top.score - runner_up.score) <= 10:
+                logger.info("Website resolution ambiguous, invoking AI arbitration", extra={"company": entity.normalized_name, "top": top.domain, "runner_up": runner_up.domain})
+                ai_used = True
+                
+                prompt = f"Which of these two domains is the official website for the company '{entity.best_original_name}'?\n"
+                prompt += f"1. {top.url}\n"
+                prompt += f"2. {runner_up.url}\n\n"
                 prompt += "Reply with exactly '1', '2', or '0' if neither is correct."
                 
                 req = AIRequest(
@@ -128,39 +159,42 @@ class WebsiteResolver:
                         metrics.record_ai_invocation()
                     resp = await asyncio.wait_for(self.ai_client.complete(req), timeout=10.0)
                     choice = resp.choices[0].message.content.strip()
-                    logger.info("AI resolution result", extra={"company": lead.name, "choice": choice})
+                    logger.info("AI resolution result", extra={"company": entity.normalized_name, "choice": choice})
                     
                     if "2" in choice:
                         top = runner_up
-                        top["score"] += 20 # Boost score for AI selection
-                        lead.resolution_evidence["website_ai_adj"] = "runner_up_selected"
+                        top.score += 20 # Boost score for AI selection
+                        top.evidence_signals.append("AI Arbitrated Winner")
                     elif "0" in choice:
-                        top["score"] -= 30 # Penalize
-                        lead.resolution_evidence["website_ai_adj"] = "both_rejected"
+                        top.score -= 30 # Penalize
+                        top.evidence_signals.append("AI Rejected")
                     else:
-                        lead.resolution_evidence["website_ai_adj"] = "top_confirmed"
+                        top.evidence_signals.append("AI Confirmed")
                 except Exception as e:
                     logger.error(f"AI tie breaker failed: {e}")
 
-        if top["score"] >= self.min_confidence:
-            lead.url = top["url"]
-            lead.is_official_resolved = True
-            lead.website_confidence = top["score"]
-            lead.resolution_evidence["website_candidates"] = [c["url"] for c in sorted_cands[:3]]
+        if top.score >= self.min_confidence:
+            entity.website_evidence = WebsiteResolutionEvidence(
+                selected_url=top.url,
+                confidence=top.score,
+                candidate_set=candidate_set,
+                ai_arbitration_used=ai_used
+            )
             
             logger.info("Resolved official website", extra={
-                "company_name": lead.name,
-                "resolved_url": lead.url,
-                "confidence": lead.website_confidence,
-                "action": "website_resolution_success"
+                "company_name": entity.normalized_name,
+                "resolved_url": top.url,
+                "confidence": top.score,
+                "action": "website_resolution_success",
+                "ai_arbitration": ai_used
             })
         else:
             logger.info("Website resolution failed minimum confidence", extra={
-                "company_name": lead.name,
-                "best_url": top["url"],
-                "best_score": top["score"],
-                "action": "website_resolution_rejected_low_confidence"
+                "company_name": entity.normalized_name,
+                "best_url": top.url,
+                "confidence": top.score,
+                "action": "website_resolution_failed"
             })
-            lead.resolution_evidence["website_rejection_reason"] = f"Low confidence: {top['score']} < {self.min_confidence}"
-            
-        return lead
+            entity.website_evidence = WebsiteResolutionEvidence(selected_url="", confidence=0, candidate_set=candidate_set, ai_arbitration_used=ai_used)
+
+        return entity
