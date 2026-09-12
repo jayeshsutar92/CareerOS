@@ -86,7 +86,7 @@ export function getLeadDiscoveryTaskOutput(
 export const leadDiscoveryService = {
   discoverLeads: async (request: LeadDiscoveryRequest): Promise<LeadDiscoveryResponse> => {
     // Map to backend schema which is snake_case
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       location: request.location,
       work_mode: request.workMode,
       batch_size: request.batchSize,

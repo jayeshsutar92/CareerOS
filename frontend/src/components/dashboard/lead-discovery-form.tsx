@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Loader2, Search } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
@@ -73,7 +73,7 @@ export function LeadDiscoveryForm() {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     formState: { errors },
   } = useForm<z.infer<typeof formSchema>>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -191,10 +191,11 @@ export function LeadDiscoveryForm() {
       const timeoutId = setTimeout(poll, 2000);
       if (activeTaskRef.current) activeTaskRef.current.timeoutId = timeoutId;
       
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as any;
       if (!isMounted.current) return;
       setPollingStatus(null);
-      const errorMessage = error.response?.data?.error?.message || error.response?.data?.detail || "Failed to start lead discovery. Please try again.";
+      const errorMessage = err.response?.data?.error?.message || err.response?.data?.detail || "Failed to start lead discovery. Please try again.";
       toast.error(errorMessage);
     }
   };
@@ -243,19 +244,25 @@ export function LeadDiscoveryForm() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-zinc-300">Work Mode</Label>
-              <Select
-                value={watch("workMode")}
-                onValueChange={(val) => setValue("workMode", val)}
-              >
-                <SelectTrigger className="w-full bg-zinc-950 border-zinc-800 text-white">
-                  <SelectValue placeholder="Select mode" />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
-                  <SelectItem value="remote">Remote</SelectItem>
-                  <SelectItem value="on-site">On-site</SelectItem>
-                  <SelectItem value="both">Both</SelectItem>
-                </SelectContent>
-              </Select>
+              <Controller
+                control={control}
+                name="workMode"
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <SelectTrigger className="w-full bg-zinc-950 border-zinc-800 text-white">
+                      <SelectValue placeholder="Select mode" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-950 border-zinc-800 text-white">
+                      <SelectItem value="remote">Remote</SelectItem>
+                      <SelectItem value="on-site">On-site</SelectItem>
+                      <SelectItem value="both">Both</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="batchSize" className="text-zinc-300">
