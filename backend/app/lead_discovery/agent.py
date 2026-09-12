@@ -99,10 +99,22 @@ class LeadDiscoveryAgent(BaseAgent):
                     if not isinstance(soc_ev, Exception):
                         valid_entities_with_socials.append((entity, ev_dict, soc_ev))
                 
+                # Phase 6: Careers Surface Discovery
+                from app.lead_discovery.careers_resolver import CareersResolver
+                careers_resolver = CareersResolver()
+                
+                careers_tasks = [careers_resolver.resolve_careers(entity, ev_dict, soc_ev, metrics=metrics) for entity, ev_dict, soc_ev in valid_entities_with_socials]
+                resolved_careers_surfaces = await asyncio.gather(*careers_tasks, return_exceptions=True)
+                
+                valid_entities_full = []
+                for (entity, ev_dict, soc_ev), car_ev in zip(valid_entities_with_socials, resolved_careers_surfaces):
+                    if not isinstance(car_ev, Exception):
+                        valid_entities_full.append((entity, ev_dict, soc_ev, car_ev))
+                
                 # --- BACKWARD COMPATIBILITY ADAPTER ---
                 # Convert CanonicalCompanyEntity to legacy CompanyLead to feed downstream Contact Discovery / Verification
                 legacy_leads = []
-                for entity, ev_dict, soc_ev in valid_entities_with_socials:
+                for entity, ev_dict, soc_ev, car_ev in valid_entities_full:
                     provider = " | ".join(list(set(e.provider for e in entity.evidence)))
                     
                     lead = CompanyLead(
@@ -122,6 +134,12 @@ class LeadDiscoveryAgent(BaseAgent):
                     # Attach social profiles to legacy lead
                     for platform, profile_url in soc_ev.resolved_profiles.items():
                         lead.socials[platform] = profile_url
+                        
+                    # Inject careers surfaces into legacy lead
+                    lead.resolution_evidence["careers_surfaces"] = [
+                        {"url": c.url, "type": c.surface_type, "method": c.discovery_method} 
+                        for c in car_ev.candidates if not c.is_rejected
+                    ]
                         
                     legacy_leads.append(lead)
                 

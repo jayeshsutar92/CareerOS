@@ -144,3 +144,20 @@ class SocialResolutionEvidence:
     canonical_id: str
     resolved_profiles: dict[str, str] = field(default_factory=dict)
     candidate_set: SocialCandidateSet = field(default_factory=SocialCandidateSet)
+
+@dataclass
+class CareersSurfaceCandidate:
+    url: str
+    surface_type: str
+    discovery_method: str
+    discovery_priority: int
+    source_url: str
+    crawl_depth: int
+    is_rejected: bool = False
+    rejection_reason: str = ""
+    evidence_signals: list[str] = field(default_factory=list)
+
+@dataclass
+class CareersSurfaceSet:
+    canonical_id: str
+    candidates: list[CareersSurfaceCandidate] = field(default_factory=list)
