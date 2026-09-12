@@ -19,12 +19,40 @@ export interface TaskStatusResponse {
   result?: LeadDiscoveryTaskResult | null;
 }
 
+export interface ResolutionEvidence {
+  socials?: Record<string, string>;
+  careers_surfaces?: Array<{ url: string; type: string; method?: string }>;
+  extracted_contacts?: Array<{
+    name: string;
+    role_classification: string;
+    email?: string;
+    linkedin_url?: string;
+    discovery_source: string;
+  }>;
+  extracted_channels?: Array<{
+    type: string;
+    value: string;
+    discovery_source: string;
+  }>;
+  verification_summary?: {
+    overall_status: string;
+    overall_confidence: number;
+    results: Array<{
+      entity_type: string;
+      status: string;
+      confidence_score: number;
+      evidence_summary: string;
+    }>;
+  };
+}
+
 export interface DiscoveredCompany {
   name: string;
   url: string;
   contacts_count: number;
   company_score?: number;
   contacts?: ContactRead[];
+  resolution_evidence?: ResolutionEvidence;
 }
 
 export interface LeadDiscoveryTaskOutput {

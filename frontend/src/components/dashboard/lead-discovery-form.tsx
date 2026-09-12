@@ -15,6 +15,7 @@ import {
   getLeadDiscoveryTaskOutput,
   leadDiscoveryService,
 } from "@/services/lead-discovery";
+import { VerificationTrace } from "@/components/dashboard/verification-trace";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -344,6 +345,10 @@ export function LeadDiscoveryForm() {
                             </li>
                           ))}
                         </ul>
+                      )}
+                      
+                      {company.resolution_evidence && (
+                        <VerificationTrace evidence={company.resolution_evidence} />
                       )}
                     </div>
                   ))}
