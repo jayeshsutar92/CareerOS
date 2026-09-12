@@ -58,30 +58,29 @@ class LeadDiscoveryAgent(BaseAgent):
                 # Phase 1: Multi-Source Company Discovery
                 candidate_set: CompanyCandidateSet = await search_provider.search_companies(job_role, location, work_mode, batch_size, metrics=metrics)
                 
+                # Phase 2: Entity Resolution (Authoritative Normalization & Clustering)
+                from app.lead_discovery.entity_resolver import EntityResolver
+                resolver = EntityResolver(min_confidence=40)
+                resolved_entities = resolver.resolve_entities(candidate_set, location)
+                
                 # --- BACKWARD COMPATIBILITY ADAPTER ---
-                # Convert the new CompanyCandidateSet back to legacy CompanyLead to feed downstream resolvers
+                # Convert the CanonicalCompanyEntity objects to legacy CompanyLead to feed downstream resolvers
                 legacy_leads = []
-                for candidate in candidate_set.get_ranked_candidates():
-                    best_name = candidate.best_original_name
-                    # Take the top evidence URL as the source URL for legacy resolution
-                    top_evidence = max(candidate.evidence, key=lambda e: e.confidence) if candidate.evidence else None
+                for entity in resolved_entities:
+                    best_name = entity.best_original_name
+                    top_evidence = max(entity.evidence, key=lambda e: e.confidence) if entity.evidence else None
                     url = top_evidence.source_url if top_evidence else ""
-                    provider = " | ".join(list(set(e.provider for e in candidate.evidence)))
+                    provider = " | ".join(list(set(e.provider for e in entity.evidence)))
                     
                     legacy_leads.append(CompanyLead(
                         name=best_name,
                         url=url,
-                        source_score=candidate.aggregate_confidence,
+                        source_score=entity.aggregate_score,
                         source_name=provider,
                         is_official_resolved=False
                     ))
                 
-                # Run the legacy EntityResolver (which will now essentially be a pass-through since names are normalized)
-                from app.lead_discovery.entity_resolver import EntityResolver
-                resolver = EntityResolver(min_confidence=40)
-                resolved_entities = resolver.resolve_entities(legacy_leads, location)
-                
-                top_entities = resolved_entities[:batch_size * 2] if batch_size else resolved_entities
+                top_entities = legacy_leads[:batch_size * 2] if batch_size else legacy_leads
                 
                 # Phase 2: Resolve official websites
                 from app.lead_discovery.website_resolver import WebsiteResolver

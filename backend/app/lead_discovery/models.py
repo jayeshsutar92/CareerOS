@@ -44,3 +44,23 @@ class CompanyCandidateSet:
     
     def get_ranked_candidates(self) -> list[CompanyCandidate]:
         return sorted(self.candidates, key=lambda c: c.aggregate_confidence, reverse=True)
+
+@dataclass
+class CanonicalCompanyEntity:
+    canonical_id: str
+    normalized_name: str
+    evidence: list[DiscoveryEvidence] = field(default_factory=list)
+    
+    @property
+    def aggregate_score(self) -> int:
+        return sum(e.confidence for e in self.evidence)
+        
+    @property
+    def best_original_name(self) -> str:
+        if not self.evidence:
+            return self.normalized_name
+        valid_names = [e for e in self.evidence if 2 < len(e.original_name) < 50]
+        if not valid_names:
+            valid_names = self.evidence
+        best = max(valid_names, key=lambda e: (e.confidence, len(e.original_name)))
+        return best.original_name
