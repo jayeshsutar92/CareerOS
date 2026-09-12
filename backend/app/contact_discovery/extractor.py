@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential, before_sleep_log
 
 import json
 
@@ -48,6 +49,12 @@ class PublicContactFetcher:
         self.timeout_seconds = timeout_seconds
 
     @cached(prefix="page_fetch", ttl_seconds=86400 * 3, key_func=lambda self, url, **kwargs: url)
+    @retry(
+        retry=retry_if_exception_type((httpx.ReadTimeout, httpx.ConnectTimeout, httpx.ConnectError)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
     async def fetch(self, url: str) -> str:
         async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True, verify=False) as client:
             try:
@@ -58,11 +65,14 @@ class PublicContactFetcher:
                 response.raise_for_status()
                 return response.text
             except httpx.HTTPStatusError as e:
-                logger.warning(f"HTTP {e.response.status_code} for URL: {url}", extra={"action": "fetch_url_http_error", "url": url, "status": e.response.status_code})
+                # We can also retry on 429, 500, 502, 503, 504 specifically here, but httpx.HTTPStatusError needs inspection
+                if e.response.status_code in (408, 429, 500, 502, 503, 504):
+                    raise # Let tenacity retry
+                logger.warning(f"Failed to fetch {url}: HTTP {e.response.status_code}")
                 return ""
             except Exception as e:
-                logger.warning(f"Failed to fetch {url}: {e}", extra={"action": "fetch_url_error", "url": url})
-                return ""
+                logger.warning(f"Fetch failed for {url}: {e}", extra={"action": "fetch_url_error", "url": url, "error": str(e)})
+                raise
 
 
 def _clean_text(raw_text: str) -> str:

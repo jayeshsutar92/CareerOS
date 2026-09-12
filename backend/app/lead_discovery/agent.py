@@ -58,6 +58,7 @@ class LeadDiscoveryAgent(BaseAgent):
                 # Phase 1: Multi-Source Company Discovery
                 candidate_set: CompanyCandidateSet = await search_provider.search_companies(job_role, location, work_mode, batch_size, metrics=metrics)
                 
+            with metrics.measure_stage("entity_resolution"):
                 # Phase 2: Entity Resolution (Authoritative Normalization & Clustering)
                 from app.lead_discovery.entity_resolver import EntityResolver
                 resolver = EntityResolver(min_confidence=40)
@@ -65,6 +66,7 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 top_entities = resolved_entities[:batch_size * 2] if batch_size else resolved_entities
                 
+            with metrics.measure_stage("website_resolution"):
                 # Phase 3: Website Candidate Resolution
                 from app.lead_discovery.website_resolver import WebsiteResolver
                 web_resolver = WebsiteResolver(min_confidence=40)
@@ -74,6 +76,7 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 valid_entities = [e for e in resolved_entities_with_web if isinstance(e, CanonicalCompanyEntity) and e.website_evidence and e.website_evidence.selected_url]
                 
+            with metrics.measure_stage("evidence_collection"):
                 # Phase 4: Evidence Collection
                 from app.lead_discovery.evidence_collector import EvidenceCollector
                 evidence_collector = EvidenceCollector()
@@ -87,6 +90,7 @@ class LeadDiscoveryAgent(BaseAgent):
                     if not isinstance(ev_result, Exception):
                         valid_entities_with_evidence.append((entity, ev_result))
                 
+            with metrics.measure_stage("social_resolution"):
                 # Phase 5: Social Resolution
                 from app.lead_discovery.social_resolver import SocialResolver
                 soc_resolver = SocialResolver(min_confidence=40)
@@ -99,6 +103,7 @@ class LeadDiscoveryAgent(BaseAgent):
                     if not isinstance(soc_ev, Exception):
                         valid_entities_with_socials.append((entity, ev_dict, soc_ev))
                 
+            with metrics.measure_stage("careers_surface_discovery"):
                 # Phase 6: Careers Surface Discovery
                 from app.lead_discovery.careers_resolver import CareersResolver
                 careers_resolver = CareersResolver()
@@ -111,6 +116,7 @@ class LeadDiscoveryAgent(BaseAgent):
                     if not isinstance(car_ev, Exception):
                         valid_entities_full.append((entity, ev_dict, soc_ev, car_ev))
                 
+            with metrics.measure_stage("contact_discovery"):
                 # Phase 7: Contact Discovery
                 from app.lead_discovery.contact_resolver import ContactResolver
                 contact_resolver = ContactResolver()
@@ -123,6 +129,7 @@ class LeadDiscoveryAgent(BaseAgent):
                     if not isinstance(cont_ev, Exception):
                         valid_entities_final.append((entity, ev_dict, soc_ev, car_ev, cont_ev))
                 
+            with metrics.measure_stage("verification_engine"):
                 # Phase 8: Verification Engine
                 from app.lead_discovery.verification_engine import VerificationEngine
                 verification_engine = VerificationEngine()
@@ -134,7 +141,7 @@ class LeadDiscoveryAgent(BaseAgent):
                     if not isinstance(ver_ev, Exception):
                         valid_entities_verified.append((entity, ev_dict, soc_ev, car_ev, cont_ev, ver_ev))
                 
-                # --- BACKWARD COMPATIBILITY ADAPTER ---
+            with metrics.measure_stage("adapter"):
                 # Convert CanonicalCompanyEntity to legacy CompanyLead to feed downstream Systems
                 legacy_leads = []
                 for entity, ev_dict, soc_ev, car_ev, cont_ev, ver_ev in valid_entities_verified:
@@ -204,6 +211,8 @@ class LeadDiscoveryAgent(BaseAgent):
                 
                 leads = legacy_leads[:batch_size]
                 # --- END ADAPTER ---
+                
+            metrics.emit_summary()
                 
             logger.info("Company leads discovered and resolved", extra={"action": "leads_discovered", "count": len(leads)})
             if not leads:

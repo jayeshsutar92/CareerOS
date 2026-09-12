@@ -129,6 +129,7 @@ class ContactResolver:
                         ))
 
                 # Use GPT Extraction for complex person parsing ONLY on these verified surfaces
+                if metrics: metrics.record_ai_invocation()
                 extracted_candidates = await self.extractor.extract(html, source_url=url, company_name=entity.best_original_name)
                 
                 for cand in extracted_candidates:
