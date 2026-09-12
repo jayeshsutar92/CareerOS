@@ -197,3 +197,25 @@ class ContactCandidateSet:
 class ContactDiscoveryEvidence:
     canonical_id: str
     candidate_set: ContactCandidateSet = field(default_factory=ContactCandidateSet)
+
+@dataclass
+class VerificationResult:
+    entity_id: str
+    entity_type: str
+    status: str
+    confidence_score: int
+    evidence_summary: list[str] = field(default_factory=list)
+    conflicting_evidence: list[str] = field(default_factory=list)
+    rejection_reason: str = ""
+
+@dataclass
+class VerificationSummary:
+    canonical_id: str = ""
+    overall_status: str = "Unverified"
+    overall_confidence: int = 0
+    results: list[VerificationResult] = field(default_factory=list)
+
+@dataclass
+class VerificationEvidence:
+    canonical_id: str
+    summary: VerificationSummary = field(default_factory=VerificationSummary)

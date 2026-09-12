@@ -123,10 +123,21 @@ class LeadDiscoveryAgent(BaseAgent):
                     if not isinstance(cont_ev, Exception):
                         valid_entities_final.append((entity, ev_dict, soc_ev, car_ev, cont_ev))
                 
+                # Phase 8: Verification Engine
+                from app.lead_discovery.verification_engine import VerificationEngine
+                verification_engine = VerificationEngine()
+                
+                verification_evidences = [verification_engine.verify(entity, ev_dict, soc_ev, car_ev, cont_ev) for entity, ev_dict, soc_ev, car_ev, cont_ev in valid_entities_final]
+                
+                valid_entities_verified = []
+                for (entity, ev_dict, soc_ev, car_ev, cont_ev), ver_ev in zip(valid_entities_final, verification_evidences):
+                    if not isinstance(ver_ev, Exception):
+                        valid_entities_verified.append((entity, ev_dict, soc_ev, car_ev, cont_ev, ver_ev))
+                
                 # --- BACKWARD COMPATIBILITY ADAPTER ---
-                # Convert CanonicalCompanyEntity to legacy CompanyLead to feed downstream Verification
+                # Convert CanonicalCompanyEntity to legacy CompanyLead to feed downstream Systems
                 legacy_leads = []
-                for entity, ev_dict, soc_ev, car_ev, cont_ev in valid_entities_final:
+                for entity, ev_dict, soc_ev, car_ev, cont_ev, ver_ev in valid_entities_verified:
                     provider = " | ".join(list(set(e.provider for e in entity.evidence)))
                     
                     lead = CompanyLead(
@@ -171,6 +182,23 @@ class LeadDiscoveryAgent(BaseAgent):
                             "discovery_source": c.discovery_source
                         } for c in cont_ev.candidate_set.channels if not c.is_rejected
                     ]
+                    
+                    # Inject Verification Summary
+                    lead.resolution_evidence["verification_summary"] = {
+                        "overall_status": ver_ev.summary.overall_status,
+                        "overall_confidence": ver_ev.summary.overall_confidence,
+                        "results": [
+                            {
+                                "entity_type": r.entity_type,
+                                "status": r.status,
+                                "confidence_score": r.confidence_score,
+                                "evidence_summary": r.evidence_summary
+                            } for r in ver_ev.summary.results
+                        ]
+                    }
+                    
+                    # Override legacy scores with deterministic verification score
+                    lead.source_score = ver_ev.summary.overall_confidence
                         
                     legacy_leads.append(lead)
                 
