@@ -16,6 +16,9 @@ from app.services.company import CompanyService
 from app.services.company_intelligence import CompanyIntelligenceService
 from app.services.email_personalization import EmailPersonalizationService
 from app.lead_discovery.metrics import DiscoveryMetrics
+from app.lead_discovery.models import CompanyCandidateSet
+from app.lead_discovery.search import CompanyLead
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +55,61 @@ class LeadDiscoveryAgent(BaseAgent):
         search_provider = get_job_search_provider()
         try:
             with metrics.measure_stage("company_search_and_resolution"):
-                leads = await search_provider.search_companies(job_role, location, work_mode, batch_size, metrics=metrics)
-            logger.info("Company leads discovered", extra={"action": "leads_discovered", "count": len(leads)})
+                # Phase 1: Multi-Source Company Discovery
+                candidate_set: CompanyCandidateSet = await search_provider.search_companies(job_role, location, work_mode, batch_size, metrics=metrics)
+                
+                # --- BACKWARD COMPATIBILITY ADAPTER ---
+                # Convert the new CompanyCandidateSet back to legacy CompanyLead to feed downstream resolvers
+                legacy_leads = []
+                for candidate in candidate_set.get_ranked_candidates():
+                    best_name = candidate.best_original_name
+                    # Take the top evidence URL as the source URL for legacy resolution
+                    top_evidence = max(candidate.evidence, key=lambda e: e.confidence) if candidate.evidence else None
+                    url = top_evidence.source_url if top_evidence else ""
+                    provider = " | ".join(list(set(e.provider for e in candidate.evidence)))
+                    
+                    legacy_leads.append(CompanyLead(
+                        name=best_name,
+                        url=url,
+                        source_score=candidate.aggregate_confidence,
+                        source_name=provider,
+                        is_official_resolved=False
+                    ))
+                
+                # Run the legacy EntityResolver (which will now essentially be a pass-through since names are normalized)
+                from app.lead_discovery.entity_resolver import EntityResolver
+                resolver = EntityResolver(min_confidence=40)
+                resolved_entities = resolver.resolve_entities(legacy_leads, location)
+                
+                top_entities = resolved_entities[:batch_size * 2] if batch_size else resolved_entities
+                
+                # Phase 2: Resolve official websites
+                from app.lead_discovery.website_resolver import WebsiteResolver
+                from app.lead_discovery.social_resolver import SocialResolver
+                
+                web_resolver = WebsiteResolver(min_confidence=40)
+                soc_resolver = SocialResolver(min_confidence=40)
+                
+                resolve_tasks = [web_resolver.resolve_website(lead, metrics=metrics) for lead in top_entities]
+                resolved_leads = await asyncio.gather(*resolve_tasks, return_exceptions=True)
+                
+                valid_leads = [l for l in resolved_leads if isinstance(l, CompanyLead) and l.is_official_resolved]
+                
+                # Phase 2b: Resolve social profiles
+                social_tasks = [soc_resolver.resolve_socials(lead, metrics=metrics) for lead in valid_leads]
+                final_valid_leads = await asyncio.gather(*social_tasks, return_exceptions=True)
+                
+                leads = [l for l in final_valid_leads if isinstance(l, CompanyLead)][:batch_size]
+                # --- END ADAPTER ---
+                
+            logger.info("Company leads discovered and resolved", extra={"action": "leads_discovered", "count": len(leads)})
             if not leads:
                 return {
                     "status": "failed",
                     "error": "Company lead discovery failed"
                 }
         except Exception as e:
-            logger.error(f"Failed to search for companies: {e}", extra={"action": "search_failed", "error": str(e)})
+            logger.exception("Failed to search for companies", extra={"action": "search_failed", "error": str(e)})
             return {
                 "status": "failed",
                 "error": "Company lead discovery failed"

@@ -1,0 +1,46 @@
+from dataclasses import dataclass, field
+from typing import Any
+
+@dataclass
+class DiscoveryEvidence:
+    provider: str
+    original_name: str
+    source_url: str
+    confidence: int
+
+@dataclass
+class CompanyCandidate:
+    normalized_name: str
+    evidence: list[DiscoveryEvidence] = field(default_factory=list)
+
+    @property
+    def aggregate_confidence(self) -> int:
+        return sum(e.confidence for e in self.evidence)
+    
+    @property
+    def best_original_name(self) -> str:
+        if not self.evidence:
+            return self.normalized_name
+        # Select the longest valid name, or the one from the highest confidence provider
+        valid_names = [e for e in self.evidence if 2 < len(e.original_name) < 50]
+        if not valid_names:
+            valid_names = self.evidence
+        best = max(valid_names, key=lambda e: (e.confidence, len(e.original_name)))
+        return best.original_name
+
+@dataclass
+class CompanyCandidateSet:
+    candidates: list[CompanyCandidate] = field(default_factory=list)
+    
+    def add_candidate(self, normalized_name: str, evidence: DiscoveryEvidence) -> None:
+        for c in self.candidates:
+            if c.normalized_name == normalized_name:
+                # Deduplicate by URL and provider to avoid duplicate identical evidence
+                if any(e.source_url == evidence.source_url and e.provider == evidence.provider for e in c.evidence):
+                    return
+                c.evidence.append(evidence)
+                return
+        self.candidates.append(CompanyCandidate(normalized_name=normalized_name, evidence=[evidence]))
+    
+    def get_ranked_candidates(self) -> list[CompanyCandidate]:
+        return sorted(self.candidates, key=lambda c: c.aggregate_confidence, reverse=True)
