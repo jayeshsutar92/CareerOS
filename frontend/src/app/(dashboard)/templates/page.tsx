@@ -16,7 +16,6 @@ export default function TemplatesPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>()
 
   const loadTemplates = async () => {
-    setIsLoading(true)
     try {
       const data = await templatesApi.list()
       setTemplates(data)
@@ -29,8 +28,16 @@ export default function TemplatesPage() {
   }
 
   useEffect(() => {
-    loadTemplates()
+    const timer = setTimeout(() => {
+      void loadTemplates()
+    }, 0)
+    return () => clearTimeout(timer)
   }, [])
+
+  const handleRefresh = () => {
+    setIsLoading(true)
+    void loadTemplates()
+  }
 
   const handleSelectForPreview = (template: Template) => {
     setPreviewTemplate(template)
@@ -47,7 +54,7 @@ export default function TemplatesPage() {
       <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">Templates</h2>
         <div className="flex items-center space-x-2">
-          <Button onClick={loadTemplates} variant="outline" size="sm">
+          <Button onClick={handleRefresh} variant="outline" size="sm">
             Refresh
           </Button>
         </div>

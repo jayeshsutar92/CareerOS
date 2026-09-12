@@ -72,12 +72,10 @@ export function LeadDiscoveryForm() {
   const {
     register,
     handleSubmit,
-    setValue,
     control,
     formState: { errors },
   } = useForm<z.infer<typeof formSchema>>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(formSchema as any),
+    resolver: zodResolver(formSchema as unknown as Parameters<typeof zodResolver>[0]),
     defaultValues: {
       jobRole: "",
       location: "Mumbai",
@@ -192,7 +190,7 @@ export function LeadDiscoveryForm() {
       if (activeTaskRef.current) activeTaskRef.current.timeoutId = timeoutId;
       
     } catch (error: unknown) {
-      const err = error as any;
+      const err = error as { response?: { data?: { error?: { message?: string }, detail?: string } } };
       if (!isMounted.current) return;
       setPollingStatus(null);
       const errorMessage = err.response?.data?.error?.message || err.response?.data?.detail || "Failed to start lead discovery. Please try again.";
@@ -209,7 +207,7 @@ export function LeadDiscoveryForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={(e) => { void handleSubmit(onSubmit)(e); }} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="jobRole" className="text-zinc-300">

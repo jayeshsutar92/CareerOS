@@ -2,7 +2,6 @@ import { api } from "./api";
 import {
   EmailPersonalizationResponse,
   EmailPersonalizationRequest,
-  EmailPersonalizationRead,
 } from "@/types/email";
 
 export const emailService = {

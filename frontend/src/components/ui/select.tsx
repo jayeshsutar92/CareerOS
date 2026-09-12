@@ -46,7 +46,7 @@ function Select({ value: controlledValue, defaultValue = '', onValueChange, chil
 }
 
 // ── Trigger ───────────────────────────────────────────────────────────────────
-interface SelectTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
+type SelectTriggerProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 function SelectTrigger({ className, children, ...props }: SelectTriggerProps) {
   const { open, setOpen } = React.useContext(SelectContext);
@@ -76,7 +76,7 @@ function SelectValue({ placeholder }: SelectValueProps) {
 }
 
 // ── Content ───────────────────────────────────────────────────────────────────
-interface SelectContentProps extends React.HTMLAttributes<HTMLDivElement> {}
+type SelectContentProps = React.HTMLAttributes<HTMLDivElement>;
 function SelectContent({ className, children, ...props }: SelectContentProps) {
   const { open, setOpen } = React.useContext(SelectContext);
   const ref = React.useRef<HTMLDivElement>(null);

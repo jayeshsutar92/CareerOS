@@ -39,8 +39,7 @@ export function ProfileSettingsForm() {
     formState: { errors, isDirty },
     reset,
   } = useForm<ProfileFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(profileSchema as any),
+    resolver: zodResolver(profileSchema as unknown as Parameters<typeof zodResolver>[0]),
     defaultValues: {
       name: profile.name || user?.full_name || "",
       email: profile.email || user?.email || "",
@@ -61,7 +60,7 @@ export function ProfileSettingsForm() {
       updateProfile(values);
       toast.success("Profile settings saved successfully");
       reset(values); // Reset isDirty state
-    } catch (error) {
+    } catch {
       toast.error("Failed to save profile settings");
     } finally {
       setIsSaving(false);

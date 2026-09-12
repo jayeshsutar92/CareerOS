@@ -59,7 +59,7 @@ export function OutreachSettingsForm() {
       updateOutreach(values);
       toast.success("Outreach settings saved successfully");
       reset(values); // Reset isDirty state
-    } catch (error) {
+    } catch {
       toast.error("Failed to save outreach settings");
     } finally {
       setIsSaving(false);

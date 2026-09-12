@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { Search, Loader2, Building2, Globe, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Building2, Globe, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCompanyIntelligenceList } from "@/hooks/use-company";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";

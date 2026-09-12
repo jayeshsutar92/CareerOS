@@ -18,7 +18,8 @@ export function ScrollArea({ className, children, ...props }: ScrollAreaProps) {
 }
 
 // Optional ScrollBar component placeholder (no custom styling needed for functionality)
-export function ScrollBar({ orientation = 'vertical' }: { orientation?: 'vertical' | 'horizontal' }) {
+export function ScrollBar(props: { orientation?: 'vertical' | 'horizontal' }) {
+  void props;
   // This is a no-op placeholder to satisfy imports; native scrollbars are used.
   return null;
 }

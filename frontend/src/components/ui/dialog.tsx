@@ -26,7 +26,8 @@ function Dialog({ open = false, onOpenChange = () => {}, children }: DialogProps
 }
 
 // ── Trigger ───────────────────────────────────────────────────────────────────
-function DialogTrigger({ children, asChild: _asChild, ...props }: { children: React.ReactNode; asChild?: boolean } & React.HTMLAttributes<HTMLButtonElement>) {
+function DialogTrigger({ children, asChild, ...props }: { children: React.ReactNode; asChild?: boolean } & React.HTMLAttributes<HTMLButtonElement>) {
+  void asChild; // ignore asChild but prevent passing it to DOM
   const { onOpenChange } = React.useContext(DialogContext);
   return (
     <button type="button" onClick={() => onOpenChange(true)} {...props}>
