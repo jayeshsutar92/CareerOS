@@ -161,3 +161,39 @@ class CareersSurfaceCandidate:
 class CareersSurfaceSet:
     canonical_id: str
     candidates: list[CareersSurfaceCandidate] = field(default_factory=list)
+
+@dataclass
+class PersonCandidate:
+    name: str
+    job_title: str
+    department: str
+    role_classification: str
+    email: str
+    linkedin_url: str
+    discovery_source: str
+    source_urls: list[str] = field(default_factory=list)
+    discovery_method: str = ""
+    evidence_signals: list[str] = field(default_factory=list)
+    is_rejected: bool = False
+    rejection_reason: str = ""
+
+@dataclass
+class CommunicationChannelCandidate:
+    channel_type: str
+    value: str
+    discovery_source: str
+    source_urls: list[str] = field(default_factory=list)
+    discovery_method: str = ""
+    evidence_signals: list[str] = field(default_factory=list)
+    is_rejected: bool = False
+    rejection_reason: str = ""
+
+@dataclass
+class ContactCandidateSet:
+    people: list[PersonCandidate] = field(default_factory=list)
+    channels: list[CommunicationChannelCandidate] = field(default_factory=list)
+
+@dataclass
+class ContactDiscoveryEvidence:
+    canonical_id: str
+    candidate_set: ContactCandidateSet = field(default_factory=ContactCandidateSet)

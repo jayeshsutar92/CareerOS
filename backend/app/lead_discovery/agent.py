@@ -111,10 +111,22 @@ class LeadDiscoveryAgent(BaseAgent):
                     if not isinstance(car_ev, Exception):
                         valid_entities_full.append((entity, ev_dict, soc_ev, car_ev))
                 
+                # Phase 7: Contact Discovery
+                from app.lead_discovery.contact_resolver import ContactResolver
+                contact_resolver = ContactResolver()
+                
+                contact_tasks = [contact_resolver.resolve_contacts(entity, ev_dict, soc_ev, car_ev, metrics=metrics) for entity, ev_dict, soc_ev, car_ev in valid_entities_full]
+                resolved_contact_evidences = await asyncio.gather(*contact_tasks, return_exceptions=True)
+                
+                valid_entities_final = []
+                for (entity, ev_dict, soc_ev, car_ev), cont_ev in zip(valid_entities_full, resolved_contact_evidences):
+                    if not isinstance(cont_ev, Exception):
+                        valid_entities_final.append((entity, ev_dict, soc_ev, car_ev, cont_ev))
+                
                 # --- BACKWARD COMPATIBILITY ADAPTER ---
-                # Convert CanonicalCompanyEntity to legacy CompanyLead to feed downstream Contact Discovery / Verification
+                # Convert CanonicalCompanyEntity to legacy CompanyLead to feed downstream Verification
                 legacy_leads = []
-                for entity, ev_dict, soc_ev, car_ev in valid_entities_full:
+                for entity, ev_dict, soc_ev, car_ev, cont_ev in valid_entities_final:
                     provider = " | ".join(list(set(e.provider for e in entity.evidence)))
                     
                     lead = CompanyLead(
@@ -139,6 +151,25 @@ class LeadDiscoveryAgent(BaseAgent):
                     lead.resolution_evidence["careers_surfaces"] = [
                         {"url": c.url, "type": c.surface_type, "method": c.discovery_method} 
                         for c in car_ev.candidates if not c.is_rejected
+                    ]
+                    
+                    # Inject discovered contacts into legacy lead
+                    lead.resolution_evidence["extracted_contacts"] = [
+                        {
+                            "name": p.name,
+                            "role_classification": p.role_classification,
+                            "email": p.email,
+                            "linkedin_url": p.linkedin_url,
+                            "discovery_source": p.discovery_source
+                        } for p in cont_ev.candidate_set.people if not p.is_rejected
+                    ]
+                    
+                    lead.resolution_evidence["extracted_channels"] = [
+                        {
+                            "type": c.channel_type,
+                            "value": c.value,
+                            "discovery_source": c.discovery_source
+                        } for c in cont_ev.candidate_set.channels if not c.is_rejected
                     ]
                         
                     legacy_leads.append(lead)
