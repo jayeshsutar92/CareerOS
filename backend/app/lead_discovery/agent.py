@@ -87,10 +87,22 @@ class LeadDiscoveryAgent(BaseAgent):
                     if not isinstance(ev_result, Exception):
                         valid_entities_with_evidence.append((entity, ev_result))
                 
+                # Phase 5: Social Resolution
+                from app.lead_discovery.social_resolver import SocialResolver
+                soc_resolver = SocialResolver(min_confidence=40)
+                
+                social_tasks = [soc_resolver.resolve_socials(entity, ev_dict, metrics=metrics) for entity, ev_dict in valid_entities_with_evidence]
+                resolved_social_evidences = await asyncio.gather(*social_tasks, return_exceptions=True)
+                
+                valid_entities_with_socials = []
+                for (entity, ev_dict), soc_ev in zip(valid_entities_with_evidence, resolved_social_evidences):
+                    if not isinstance(soc_ev, Exception):
+                        valid_entities_with_socials.append((entity, ev_dict, soc_ev))
+                
                 # --- BACKWARD COMPATIBILITY ADAPTER ---
-                # Convert CanonicalCompanyEntity to legacy CompanyLead to feed downstream SocialResolver
+                # Convert CanonicalCompanyEntity to legacy CompanyLead to feed downstream Contact Discovery / Verification
                 legacy_leads = []
-                for entity, ev_dict in valid_entities_with_evidence:
+                for entity, ev_dict, soc_ev in valid_entities_with_socials:
                     provider = " | ".join(list(set(e.provider for e in entity.evidence)))
                     
                     lead = CompanyLead(
@@ -105,18 +117,15 @@ class LeadDiscoveryAgent(BaseAgent):
                     if entity.website_evidence.ai_arbitration_used:
                         lead.resolution_evidence["website_ai_adj"] = "ai_arbitrated"
                         
-                    # Inject collected evidence into the legacy lead so downstream can consume it
                     lead.resolution_evidence["collected_evidence"] = ev_dict
                     
+                    # Attach social profiles to legacy lead
+                    for platform, profile_url in soc_ev.resolved_profiles.items():
+                        lead.socials[platform] = profile_url
+                        
                     legacy_leads.append(lead)
                 
-                # Phase 4b (Legacy Phase 3b): Resolve social profiles
-                from app.lead_discovery.social_resolver import SocialResolver
-                soc_resolver = SocialResolver(min_confidence=40)
-                social_tasks = [soc_resolver.resolve_socials(lead, metrics=metrics) for lead in legacy_leads]
-                final_valid_leads = await asyncio.gather(*social_tasks, return_exceptions=True)
-                
-                leads = [l for l in final_valid_leads if isinstance(l, CompanyLead)][:batch_size]
+                leads = legacy_leads[:batch_size]
                 # --- END ADAPTER ---
                 
             logger.info("Company leads discovered and resolved", extra={"action": "leads_discovered", "count": len(leads)})

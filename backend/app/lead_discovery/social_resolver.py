@@ -12,7 +12,7 @@ from app.company_intelligence.extractor import (
     TWITTER_RE,
     GITHUB_RE,
 )
-from app.lead_discovery.search import CompanyLead
+from app.lead_discovery.models import CanonicalCompanyEntity, SocialProfileCandidate, SocialCandidateSet, SocialResolutionEvidence
 from duckduckgo_search import DDGS
 
 from app.ai.client import get_ai_client
@@ -127,59 +127,56 @@ class SocialResolver:
             return top["url"]
         return None
 
-    @cached(prefix="social_resolution", ttl_seconds=86400 * 7, key_func=lambda self, lead, **kwargs: lead.url)
-    async def resolve_socials(self, lead: CompanyLead, metrics: DiscoveryMetrics | None = None) -> CompanyLead:
-        if not lead.is_official_resolved or not lead.url:
-            return lead
-
+    @cached(prefix="social_resolution_phase5", ttl_seconds=86400 * 7, key_func=lambda self, entity, ev_dict, **kwargs: entity.canonical_id)
+    async def resolve_socials(self, entity: CanonicalCompanyEntity, evidence_coll_dict: dict[str, Any], metrics: DiscoveryMetrics | None = None) -> SocialResolutionEvidence:
         extracted_socials = {}
+        resolution_evidence = SocialResolutionEvidence(canonical_id=entity.canonical_id)
         
-        # 1. Use pre-collected evidence from Phase 4 if available
-        collected_ev = lead.resolution_evidence.get("collected_evidence")
-        if collected_ev and "evidence" in collected_ev:
-            for ev in collected_ev["evidence"]:
+        # 1. Use pre-collected evidence from Phase 4
+        if evidence_coll_dict and "evidence" in evidence_coll_dict:
+            for ev in evidence_coll_dict["evidence"]:
                 if ev["evidence_type"].startswith("social_profile_"):
                     platform = ev["evidence_type"].replace("social_profile_", "")
-                    extracted_socials[platform] = ev["value"]
+                    if platform not in extracted_socials:
+                        extracted_socials[platform] = ev["value"]
+                        cand = SocialProfileCandidate(
+                            platform=platform,
+                            url=ev["value"],
+                            username="",
+                            score=100,
+                            source="EvidenceCollection",
+                            evidence_signals=["Extracted directly from website/ATS"]
+                        )
+                        resolution_evidence.candidate_set.candidates.append(cand)
                     
             if extracted_socials:
                 logger.info("Consumed pre-collected social profiles", extra={
-                    "company_name": lead.name,
+                    "company_name": entity.normalized_name,
                     "found_platforms": list(extracted_socials.keys()),
                     "action": "social_extraction_from_evidence"
                 })
-                lead.resolution_evidence["socials_from_evidence"] = list(extracted_socials.keys())
                 
-        # 2. Fetch official website to extract socials natively if no evidence was provided
-        if not extracted_socials and not collected_ev:
-            try:
-                html, _ = await self.fetcher.fetch_page(lead.url)
-                extracted_socials = self._extract_from_html(html)
-                logger.info("Extracted social profiles directly from website", extra={
-                    "company_name": lead.name,
-                    "found_platforms": list(extracted_socials.keys()),
-                    "action": "social_extraction_success"
-                })
-                lead.resolution_evidence["socials_from_html"] = list(extracted_socials.keys())
-            except Exception as e:
-                logger.warning(f"Failed to fetch {lead.url} for social extraction: {e}")
-                lead.resolution_evidence["social_html_error"] = str(e)
-            
         for platform, url in extracted_socials.items():
-            lead.socials[platform] = url
+            resolution_evidence.resolved_profiles[platform] = url
             
         # 2. Fallback search for missing critical platforms
-        critical_platforms = ["linkedin", "twitter"]
+        critical_platforms = ["linkedin", "github", "facebook", "twitter", "instagram", "youtube"]
         for platform in critical_platforms:
-            if platform not in lead.socials:
-                url = await self._fallback_search(lead.name, platform, metrics)
+            if platform not in resolution_evidence.resolved_profiles:
+                url = await self._fallback_search(entity.best_original_name, platform, metrics)
                 if url:
-                    lead.socials[platform] = url
-                    logger.info(f"Resolved {platform} via fallback search", extra={"company_name": lead.name, "url": url, "action": "social_fallback_success"})
-                    if "social_fallback" not in lead.resolution_evidence:
-                        lead.resolution_evidence["social_fallback"] = []
-                    lead.resolution_evidence["social_fallback"].append(platform)
+                    resolution_evidence.resolved_profiles[platform] = url
+                    cand = SocialProfileCandidate(
+                        platform=platform,
+                        url=url,
+                        username="",
+                        score=60,
+                        source="DDG Fallback",
+                        evidence_signals=["Discovered via search fallback"]
+                    )
+                    resolution_evidence.candidate_set.candidates.append(cand)
+                    logger.info(f"Resolved {platform} via fallback search", extra={"company_name": entity.normalized_name, "url": url, "action": "social_fallback_success"})
                 else:
-                    logger.info(f"Fallback search yielded no valid candidates for {platform}", extra={"company_name": lead.name})
+                    logger.info(f"Fallback search yielded no valid candidates for {platform}", extra={"company_name": entity.normalized_name})
 
-        return lead
+        return resolution_evidence

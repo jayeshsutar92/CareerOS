@@ -120,3 +120,27 @@ class EvidenceCollection:
             methods=[method],
             first_seen=time.time()
         ))
+
+@dataclass
+class SocialProfileCandidate:
+    platform: str
+    url: str
+    username: str
+    score: int
+    source: str
+    is_rejected: bool = False
+    rejection_reason: str = ""
+    evidence_signals: list[str] = field(default_factory=list)
+
+@dataclass
+class SocialCandidateSet:
+    candidates: list[SocialProfileCandidate] = field(default_factory=list)
+    
+    def get_ranked_valid_candidates(self, platform: str) -> list[SocialProfileCandidate]:
+        return sorted([c for c in self.candidates if not c.is_rejected and c.platform == platform], key=lambda x: x.score, reverse=True)
+
+@dataclass
+class SocialResolutionEvidence:
+    canonical_id: str
+    resolved_profiles: dict[str, str] = field(default_factory=dict)
+    candidate_set: SocialCandidateSet = field(default_factory=SocialCandidateSet)
